@@ -66,15 +66,9 @@ else:
 
 # Globals
 
-q_jump_route_list = ['52']
+q_jump_route_list = ['S1']
 analysis_routes = q_jump_route_list
-# analysis_routes = ['W47']
-# analysis_routes = ['70', '64', 'D32', 'H8', 'S2']
-# analysis_routes = ['S1', 'S9', 'H4', 'G8', '64']
-# analysis_routes = ['S2','S4','H1','H2','H3','79','W47']
 analysis_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-# analysis_days = ['Friday']
-# EPSG code for WMATA-area work
 wmata_crs = 2248
 
 # 1.3 Import User-Defined Package
