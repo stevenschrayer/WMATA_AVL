@@ -8,13 +8,13 @@ library(janitor)
 library(testthat)
 library(janitor)
 
-source(file.path("WMATA_AVL", "analysis", "bus-lane-analysis", "planapi_functions.R"))
+source(here::here("analysis", "bus-lane-analysis", "planapi_functions.R"))
 
 
 # Parameters --------------------------------------------------------------
 
-param_month <- "2020-07-01"
-param_route <- "54"
+param_month <- "2019-10-01"
+param_route <- "S4"
 
 con <- connect_planapi(jar_path = stin_jar())
 
@@ -60,4 +60,4 @@ bus_state_ID_date <- bus_state_filtered %>%
                                 day = str_sub(filedate, 9, 10))) %>%
   distinct(date_log_format)
 
-write_csv(bus_state_ID_date, file.path("WMATA_AVL", "analysis", "bus-lane-analysis", "2020-07-busstate_file_IDs.csv"))
+write_csv(bus_state_ID_date, here::here("analysis", "bus-lane-analysis", glue::glue("{param_month}-{param_route}-busstate_file_IDs.csv")))

@@ -36,7 +36,7 @@ pattern_detail_dat = pattern_detail_dat.drop(columns=['SortOrder', 'GeoPathID'])
 pattern_detail_dat.columns = [inflection.underscore(col_nm) for col_nm in pattern_detail_dat.columns]
 pattern_detail_dat.rename(columns={'distance':'dist_from_previous_stop'},inplace=True)
 
-q_jump_route_list = ['S1']
+q_jump_route_list = ['52']
 pattern_q_jump_route_dat = pattern_dat.query('route in @q_jump_route_list')
 set(pattern_q_jump_route_dat.route.unique()) - set(q_jump_route_list)
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Create by: abibeka, wytimmerman
+Created by: abibeka, wytimmerman, rlesniak@wmata.com
 Purpose: Merge wmata_schedule and rawnav data
 Created on Fri May 15 15:36:49 2020
 """
@@ -66,9 +66,9 @@ else:
 
 # Globals
 
-q_jump_route_list = ['S1']
+q_jump_route_list = ['52']
 analysis_routes = q_jump_route_list
-analysis_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+analysis_days = ['Monday']
 wmata_crs = 2248
 
 # 1.3 Import User-Defined Package

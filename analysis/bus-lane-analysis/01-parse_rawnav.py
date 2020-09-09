@@ -73,7 +73,7 @@ else:
 restrict_n = None
 
 # List of Routes 
-q_jump_route_list = ['52']
+q_jump_route_list = ['S4']
 # If desired, a subset of routes above or the entire list. Code will iterate on the analysis_routes list
 analysis_routes = q_jump_route_list
 
@@ -94,7 +94,7 @@ begin_time = datetime.now()  ##
 # Create a list of zipped rawnavfiles (ala 'rawnav06544171027.txt.zip') as 
 # file_universe. 
 
-zipped_files_dir_parent = os.path.join(path_source_data, "072020")
+zipped_files_dir_parent = os.path.join(path_source_data, "102019")
 file_universe = glob.glob(os.path.join(zipped_files_dir_parent, "*.txt.zip"))
 subset_file = os.path.join(path_working, "analysis", "bus-lane-analysis", "2020-07-busstate_file_IDs.csv")
 subset = pd.read_csv(subset_file)['date_log_format'].to_list()
