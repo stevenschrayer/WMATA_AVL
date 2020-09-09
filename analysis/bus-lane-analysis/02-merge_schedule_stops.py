@@ -66,7 +66,7 @@ else:
 
 # Globals
 
-q_jump_route_list = ['52']
+q_jump_route_list = ['S4']
 analysis_routes = q_jump_route_list
 analysis_days = ['Monday']
 wmata_crs = 2248

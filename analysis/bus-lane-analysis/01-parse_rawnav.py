@@ -96,7 +96,7 @@ begin_time = datetime.now()  ##
 
 zipped_files_dir_parent = os.path.join(path_source_data, "102019")
 file_universe = glob.glob(os.path.join(zipped_files_dir_parent, "*.txt.zip"))
-subset_file = os.path.join(path_working, "analysis", "bus-lane-analysis", "2020-07-busstate_file_IDs.csv")
+subset_file = os.path.join(path_working, "analysis", "bus-lane-analysis", "2019-10-01-S4-busstate_file_IDs.csv")
 subset = pd.read_csv(subset_file)['date_log_format'].to_list()
 
 def Filter(string, substr): 
