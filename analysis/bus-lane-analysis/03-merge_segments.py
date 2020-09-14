@@ -97,15 +97,25 @@ xwalk_seg_pattern_stop_in = wr.tribble(
                 "W47",             "EAST",     "irving_fifteenth_sixteenth_stub",    2368
   )
 
-xwalk_wmata_route_dir_pattern = (
-    wr.read_sched_db_patterns(
-        path = os.path.join(path_source_data,
-                            "wmata_schedule_data",
-                            "Schedule_082719-201718.mdb"),
-        analysis_routes = analysis_routes)
-    .filter(items = ['direction', 'route','pattern'])
-    .drop_duplicates()
+# xwalk_wmata_route_dir_pattern = (
+#     wr.read_sched_db_patterns(
+#         path = os.path.join(path_source_data,
+#                             "wmata_schedule_data",
+#                             "Schedule_082719-201718.mdb"),
+#         analysis_routes = analysis_routes)
+#     .filter(items = ['direction', 'route','pattern'])
+#     .drop_duplicates()
+# )
+#update for wmata schedule via .csv
+wmata_schedule_dat = (
+    pd.read_csv(
+        os.path.join(path_sp, "wmata_schedule_data_q_jump_routes.csv"),
+        index_col = 0
+    )
+    .reset_index(drop=True)
 )
+
+xwalk_wmata_route_dir_pattern = wmata_schedule_dat.filter(items = ['direction', 'route','pattern']).drop_duplicates()
     
 xwalk_seg_pattern_stop = (
     xwalk_seg_pattern_stop_in

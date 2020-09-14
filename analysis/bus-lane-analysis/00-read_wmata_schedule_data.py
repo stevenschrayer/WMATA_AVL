@@ -6,7 +6,7 @@ Purpose: Read WMATA schedule data; Schedule_082719-201718.mdb
 # https://stackoverflow.com/questions/39835770/read-data-from-pyodbc-to-pandas
 import pandas as pd, os, inflection, numpy as np
 
-mdb_to_excel_file_loc = r'C:\Users\e043868\Documents\RawNav'
+mdb_to_excel_file_loc = r'C:\Users\E048374\Documents\RawNav'
 
 stop_file = os.path.join(mdb_to_excel_file_loc, '082719-201718 Stop.xlsx')
 stop_dat = pd.read_excel(stop_file)

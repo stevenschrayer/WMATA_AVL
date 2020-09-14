@@ -197,11 +197,12 @@ def merge_rawnav_wmata_schedule(analysis_route_,
         wmata_schedule_based_sum_dat_=wmata_schedule_based_sum_dat
     )
     
-    wmata_schedule_based_sum_dat.set_index(
-        ['fullpath', 'filename', 'file_id', 'wday', 'start_date_time', 'end_date_time',
-         'index_run_start', 'taglist', 'route_pattern', 'route', 'pattern'],
-        inplace=True,
-        drop=True)
+    #do we need to set this index?
+    # wmata_schedule_based_sum_dat.set_index(
+    #     ['fullpath', 'filename', 'file_id', 'wday', 'start_date_time', 'end_date_time',
+    #      'index_run_start', 'taglist', 'route_pattern', 'route', 'pattern'],
+    #     inplace=True,
+    #     drop=True)
     
     return wmata_schedule_based_sum_dat, nearest_rawnav_point_to_wmata_schedule_correct_stop_order_dat
 

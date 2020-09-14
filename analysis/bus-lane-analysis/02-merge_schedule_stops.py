@@ -58,6 +58,15 @@ elif os.getlogin() == "E043868":
     path_source_data = r"\\l-600730\RawNavArchive"
     path_sp = r"C:\Users\e043868\Documents\RawNav"
     path_processed_data = os.path.join(path_sp, "data", "02-processed")
+
+elif os.getlogin() == "E048374":
+    # Working Paths
+    path_working = r"C:\Users\E048374\OneDrive - WMATA\rawnav_rachel_fork\WMATA_AVL"
+    os.chdir(os.path.join(path_working))
+    sys.path.append(r"C:\Users\E048374\OneDrive - WMATA\rawnav_rachel_fork\WMATA_AVL")
+    path_source_data = r"\\l-600730\RawNavArchive"
+    path_sp = r"C:\Users\E048374\Documents\RawNav"
+    path_processed_data = os.path.join(path_sp, "data", "02-processed")
    
     
 else:

@@ -485,7 +485,7 @@ def decompose_stop_area(rawnav,
             "t_accel_phase", #we'll cut this up a bit further later
             "t_nopax", #we'll apply different criteria to this later        
         ], 
-        default="doh" 
+        default="doh" #NOTE does this stand for anything? 
     )
 
     # Some buses will stop but not take passengers, so we can't use door openings to cue what 

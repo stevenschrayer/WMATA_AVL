@@ -174,27 +174,31 @@ for seg in list(xwalk_seg_pattern_stop.seg_name_id.drop_duplicates()): #["eleven
                   | flag_odom_total_mismatch)'
         )
     )
-       
-    stop_index = (
-        pq.read_table(source=os.path.join(path_processed_data,"stop_index.parquet"),
-                      filters=[[('route','=',route)] for route in seg_routes],
-                        columns = ['seg_name_id',
-                                    'route',
-                                    'pattern',
-                                    'stop_id',
-                                    'filename',
-                                    'index_run_start',
-                                    'index_loc',
-                                    'odom_ft',
-                                    'sec_past_st',
-                                    'geo_description'],
-                      use_pandas_metadata = True
-        )
-        .to_pandas()
+    
+    #NOTE - the 'stop_index.parquet' file from #2 merge schedule does not have 'seg_name_id'
+    #propose taking it out of the columns below
+    #first import stop_index -- then join seg_name_id
+    stop_index = ( pq.read_table(source=os.path.join(path_processed_data,"stop_index.parquet"),
+                  filters=[[('route','=',route)] for route in seg_routes],
+                    columns = [ 'route',
+                                'pattern',
+                                'stop_id',
+                                'filename',
+                                'index_run_start',
+                                'index_loc',
+                                'odom_ft',
+                                'sec_past_st',
+                                'geo_description'],
+                  use_pandas_metadata = True
+    ).to_pandas()
         # As a bit of proofing, we confirm this is int32 and not string, may remove later
         .assign(pattern = lambda x: x.pattern.astype('int32')) 
         .rename(columns = {'odom_ft' : 'odom_ft_qj_stop'})
-    ) 
+    )
+
+    # stop_index_w_segid = stop_index.merge(xwalk_seg_pattern_stop_in, how='left', on=['route','stop_id']).copy()
+    # stop_index_w_segid.loc[:,'pattern'] = stop_index_w_segid.loc[:,'pattern'].astype('int32').copy()
+    # stop_index_w_segid.rename(columns={'odom_ft' : 'odom_ft_qj_stop'}, inplace=True)
     
     # Filter Stop index to the relevant QJ stops
     stop_index_fil = (
