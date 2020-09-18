@@ -667,7 +667,7 @@ def plot_rawnav_trajectory_with_wmata_schedule_stops(rawnav_dat, index_table_lin
     return (this_map)
 
 
-def plot_marker_clusters(this_map, dat, lat, long, feature_grp):
+def plot_marker_clusters(this_map, dat, lat, long, feature_grp, fill_color='#e942f5'):
     '''
     Plot rawnav trajectory points.
     Parameters
@@ -682,6 +682,7 @@ def plot_marker_clusters(this_map, dat, lat, long, feature_grp):
         longitude column name
     feature_grp : folium.plugin.FeatureGroup
         feature group used for rawnav trajectory
+    fill_color : default pink :)
     Returns
     -------
     None
@@ -693,7 +694,8 @@ def plot_marker_clusters(this_map, dat, lat, long, feature_grp):
         # https://deparkes.co.uk/2019/02/27/folium-lines-and-markers/
         folium.CircleMarker(
             location=[row[lat], row[long]], radius=2,
-            popup=folium.Popup(html=label, parse_html=False, max_width='200')).add_to(feature_grp)
+            popup=folium.Popup(html=label, parse_html=False, max_width='200'),
+            fill=True, fill_color=fill_color, color=fill_color).add_to(feature_grp)
 
 
 def plot_lines_clusters(this_map, dat, feature_grp):

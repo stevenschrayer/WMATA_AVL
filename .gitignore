@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+#processed data
+data/02-processed/*.csv
+data/02-processed/*.geojson
+
 # C extensions
 *.so
 

@@ -27,11 +27,14 @@ def decompose_segment_ff(rawnav,
     # This filter-calculate order appears opposite elsewhere, but is appropriate there.
     rawnav_fil = filter_to_segment(rawnav,
                                    segment_summary_)
+
+    #NOTE - the above is not getting passed to 'calc_rolling_vals' is that okay?
+    #modified below
     
-    rawnav_fil = calc_rolling_vals(rawnav)
+    rawnav_fil_w_rolling = calc_rolling_vals(rawnav_fil)
            
     freeflow_seg = (
-        rawnav_fil
+        rawnav_fil_w_rolling
         .loc[lambda x: x.fps_next3 < max_fps, 'fps_next3']
         .quantile([0.01, 0.05, 0.10, 0.15, 0.25, 0.5, 0.75, 0.85, 0.90, 0.95, 0.99])
         .to_frame()

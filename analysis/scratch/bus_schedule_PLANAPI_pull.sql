@@ -10,4 +10,4 @@ and to_date('17-NOV-19','DD-MON-YY')
 
 select * from ARCCCAD.AR_BT_VERSION@bdwp.wmata.com order by activationdts;
 
-select * from BUS_SCHED_ROUTE sched where route = 'S4' and versionid = 70;
+select * from BUS_SCHED_ROUTE sched where route = '52' and versionid = 70;
