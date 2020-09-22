@@ -7,6 +7,8 @@ __pycache__/
 data/02-processed/*.csv
 data/02-processed/*.geojson
 data/02-processed/*.parquet
+data/02-processed/exports_*
+
 
 # C extensions
 *.so

@@ -28,7 +28,7 @@ def decompose_segment_ff(rawnav,
     rawnav_fil = filter_to_segment(rawnav,
                                    segment_summary_)
 
-    #NOTE - the above is not getting passed to 'calc_rolling_vals' is that okay?
+    #NOTE - the above is was not getting passed to 'calc_rolling_vals' is that okay?
     #modified below
     
     rawnav_fil_w_rolling = calc_rolling_vals(rawnav_fil)
