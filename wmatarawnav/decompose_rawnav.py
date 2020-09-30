@@ -27,11 +27,14 @@ def decompose_segment_ff(rawnav,
     # This filter-calculate order appears opposite elsewhere, but is appropriate there.
     rawnav_fil = filter_to_segment(rawnav,
                                    segment_summary_)
+
+    #NOTE - the above is was not getting passed to 'calc_rolling_vals' is that okay?
+    #modified below
     
-    rawnav_fil = calc_rolling_vals(rawnav)
+    rawnav_fil_w_rolling = calc_rolling_vals(rawnav_fil)
            
     freeflow_seg = (
-        rawnav_fil
+        rawnav_fil_w_rolling
         .loc[lambda x: x.fps_next3 < max_fps, 'fps_next3']
         .quantile([0.01, 0.05, 0.10, 0.15, 0.25, 0.5, 0.75, 0.85, 0.90, 0.95, 0.99])
         .to_frame()
@@ -485,7 +488,7 @@ def decompose_stop_area(rawnav,
             "t_accel_phase", #we'll cut this up a bit further later
             "t_nopax", #we'll apply different criteria to this later        
         ], 
-        default="doh" 
+        default="doh" #NOTE does this stand for anything? 
     )
 
     # Some buses will stop but not take passengers, so we can't use door openings to cue what 
@@ -513,22 +516,32 @@ def decompose_stop_area(rawnav,
        ],        
        default = 'not relevant'
     )
-        
+    
+    #NOTE - what's going on here??
+    ##NOTE - BAM - I broke the .transform into 2 steps because it was breaking.. not sure why
+    # the 2-step version is essentially what .transform is supposed to do
+    #it might have something to do with the index...
+    
     # In cases where bus is stopped around door open, we do special things.
     # First, we flag rows where bus is literally stopped to pick up passengers.
     # Note that based on t_stop1 definition, this only happens first time bus opens doors
     # This will be off in cases where the bus has door open time (t_stop1) but 
     # the vehicle never appears to stop, but our logic downstream will be unaffected.
-    rawnav_fil_stop_area_5['at_stop']= (
+    rawnav_fil_stop_group = (
         rawnav_fil_stop_area_5
-        .groupby(['filename','index_run_start','stop_id','veh_state_changes'])['rough_phase_by_door']
-        .transform(lambda var: var.isin(['t_stop1']).any())
-    )
+        .groupby(['filename','index_run_start','stop_id','veh_state_changes'])['rough_phase_by_door'].agg(lambda var: var.isin(['t_stop1']).any())
+        .reset_index()
+        .rename(columns={'rough_phase_by_door':'at_stop'})
+        )
+    
+    rawnav_fil_stop_area_5_merge = rawnav_fil_stop_area_5.merge(rawnav_fil_stop_group,
+                            how='left',
+                            on=['filename','index_run_start','stop_id','veh_state_changes'])
     
     # Though not strictly necessary, we'll fix teh cases where the vehicle never really stops
     # but we see door open time. Just in case anyone goes looking, don't want incorrect values
-    rawnav_fil_stop_area_5 = (
-        rawnav_fil_stop_area_5 
+    rawnav_fil_stop_area_5_merge = (
+        rawnav_fil_stop_area_5_merge 
         .assign(
             at_stop = lambda x: 
                 np.where(
@@ -540,17 +553,17 @@ def decompose_stop_area(rawnav,
         )
     )
 
-    rawnav_fil_stop_area_5['at_stop_phase'] = np.select(
+    rawnav_fil_stop_area_5_merge['at_stop_phase'] = np.select(
         [
-            ((rawnav_fil_stop_area_5.at_stop) 
+            ((rawnav_fil_stop_area_5_merge.at_stop) 
              # One might consider condition that is less sensitive. Maybe speed under 2 mph?
              # Note that we don't use a test on fps_next because 0 dist and 0 second ping could
              # lead to NA value
-                 & (rawnav_fil_stop_area_5.odom_ft_marg == 0)
-                 & (rawnav_fil_stop_area_5.rough_phase_by_door == "t_decel_phase")),
-            ((rawnav_fil_stop_area_5.at_stop) 
-                & (rawnav_fil_stop_area_5.odom_ft_marg == 0)
-                & (rawnav_fil_stop_area_5.rough_phase_by_door == "t_accel_phase"))
+                 & (rawnav_fil_stop_area_5_merge.odom_ft_marg == 0)
+                 & (rawnav_fil_stop_area_5_merge.rough_phase_by_door == "t_decel_phase")),
+            ((rawnav_fil_stop_area_5_merge.at_stop) 
+                & (rawnav_fil_stop_area_5_merge.odom_ft_marg == 0)
+                & (rawnav_fil_stop_area_5_merge.rough_phase_by_door == "t_accel_phase"))
         ],
         [
             "t_l_initial",
@@ -561,7 +574,7 @@ def decompose_stop_area(rawnav,
 
     # Finally, we combine the door state columns for the decomposition
     rawnav_fil_stop_area_6 = (
-        rawnav_fil_stop_area_5
+        rawnav_fil_stop_area_5_merge
         # Assign the at_stop_phase corrections
         .assign(stop_area_phase = lambda x: np.where(x.at_stop_phase != "NA",
                                                      x.at_stop_phase,

@@ -3,6 +3,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+#processed data
+data/02-processed/*.csv
+data/02-processed/*.geojson
+data/02-processed/*.parquet
+data/02-processed/exports_*
+
+
 # C extensions
 *.so
 
@@ -137,3 +144,4 @@ dmypy.json
 !data/00-raw/demo_data/*
 *.xml
 .idea/WMATA_AVL.iml
+analysis/bus-lane-analysis/2020-07-busstate_file_IDs.csv

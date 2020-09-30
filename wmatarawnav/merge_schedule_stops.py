@@ -197,11 +197,12 @@ def merge_rawnav_wmata_schedule(analysis_route_,
         wmata_schedule_based_sum_dat_=wmata_schedule_based_sum_dat
     )
     
-    wmata_schedule_based_sum_dat.set_index(
-        ['fullpath', 'filename', 'file_id', 'wday', 'start_date_time', 'end_date_time',
-         'index_run_start', 'taglist', 'route_pattern', 'route', 'pattern'],
-        inplace=True,
-        drop=True)
+    #do we need to set this index?
+    # wmata_schedule_based_sum_dat.set_index(
+    #     ['fullpath', 'filename', 'file_id', 'wday', 'start_date_time', 'end_date_time',
+    #      'index_run_start', 'taglist', 'route_pattern', 'route', 'pattern'],
+    #     inplace=True,
+    #     drop=True)
     
     return wmata_schedule_based_sum_dat, nearest_rawnav_point_to_wmata_schedule_correct_stop_order_dat
 
@@ -344,11 +345,13 @@ def assert_clean_stop_order_increase_with_odom(nearest_rawnav_point_to_wmata_sch
               i.e. stops are removed if  order does not increase with index_loc or time or distance.
             - where all stops with closest rawnav point > 100 ft. are removed.
     """
+    #NOTE - BAM - I changed "stop_sort_order" to "stop_sequence" sorting below
+    # this should be equivalent except stop_sequence starts at 1 instead of 0
     row_before = nearest_rawnav_point_to_wmata_schedule_data_.shape[0]
     nearest_rawnav_point_to_wmata_schedule_data_. \
-        sort_values(['filename', 'index_run_start', 'stop_sort_order'], inplace=True)
+        sort_values(['filename', 'index_run_start', 'stop_sequence'], inplace=True)
     assert (nearest_rawnav_point_to_wmata_schedule_data_.duplicated(
-        ['filename', 'index_run_start', 'stop_sort_order']).sum() == 0)
+        ['filename', 'index_run_start', 'stop_sequence']).sum() == 0)
     while (sum(nearest_rawnav_point_to_wmata_schedule_data_.
                        groupby(['filename', 'index_run_start']).index_loc.diff().dropna() < 0) != 0):
         nearest_rawnav_point_to_wmata_schedule_data_ = \
@@ -415,13 +418,13 @@ def include_wmata_schedule_based_summary(rawnav_q_dat, rawnav_sum_dat, nearest_s
         .query('index_loc >= index_loc_first_stop & index_loc <= index_loc_last_stop')
     )
     
+    #removed heading from the column list - it does not get aggregated
     rawnav_q_stop_dat = (
         rawnav_q_stop_dat[
             ['filename', 
              'index_run_start', 
              'lat', 
              'long',
-             'heading', 
              'odom_ft', 
              'sec_past_st',
              'first_stop_dist_nearest_point', 
@@ -666,7 +669,7 @@ def plot_rawnav_trajectory_with_wmata_schedule_stops(rawnav_dat, index_table_lin
     return (this_map)
 
 
-def plot_marker_clusters(this_map, dat, lat, long, feature_grp):
+def plot_marker_clusters(this_map, dat, lat, long, feature_grp, fill_color='#e942f5'):
     '''
     Plot rawnav trajectory points.
     Parameters
@@ -681,6 +684,7 @@ def plot_marker_clusters(this_map, dat, lat, long, feature_grp):
         longitude column name
     feature_grp : folium.plugin.FeatureGroup
         feature group used for rawnav trajectory
+    fill_color : default pink :)
     Returns
     -------
     None
@@ -692,7 +696,8 @@ def plot_marker_clusters(this_map, dat, lat, long, feature_grp):
         # https://deparkes.co.uk/2019/02/27/folium-lines-and-markers/
         folium.CircleMarker(
             location=[row[lat], row[long]], radius=2,
-            popup=folium.Popup(html=label, parse_html=False, max_width='200')).add_to(feature_grp)
+            popup=folium.Popup(html=label, parse_html=False, max_width='200'),
+            fill=True, fill_color=fill_color, color=fill_color).add_to(feature_grp)
 
 
 def plot_lines_clusters(this_map, dat, feature_grp):

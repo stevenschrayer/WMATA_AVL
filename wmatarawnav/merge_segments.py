@@ -55,12 +55,12 @@ def merge_rawnav_segment(rawnav_gdf_,
     seg_pattern_first_last = ll.explode_first_last(seg_pattern_shape)
            
     # Find rawnav point nearest each segment
-    index_run_segment_start_end_1 = (
+    index_run_segment_start_end = (
         ws.merge_rawnav_target(
             target_dat = seg_pattern_first_last,
             rawnav_dat = rawnav_gdf_
         )
-    )
+    ).reset_index(drop=True)
      
     # Cleaning
 
@@ -68,38 +68,39 @@ def merge_rawnav_segment(rawnav_gdf_,
     # present? Does the run stay 'within' a certain radius of the segment line?) these 
     # checks are largely superseded by checks that the odometer reading approximately matches
     # the segment length (done further below). 
-    index_run_segment_start_end_2 = (
-        index_run_segment_start_end_1
-        .assign(flag_too_far = lambda x: x.dist_to_nearest_point > 50)
-        # note that we will give both the whole run the 'wrong order' flag in the summary table
+    # note that we will give both the whole run the 'wrong order' flag in the summary table
         # if the order test fails for any point
         # This wrong order flag is necessary because some early login and late close out runs
         # will have pings around certain segments, resulting in misshapen joins. This could 
         # be addressed if we spent more time cleaning up those runs, but instead we just drop 
         # them through these filters.
-        .assign(
-            flag_wrong_order = lambda x: 
-                x
-                .groupby(['filename','index_run_start'], sort = False)
-                .index_loc
-                .diff()
-                .fillna(0)
-                .lt(0) 
-        )
-    )
-        
+
+    index_run_segment_start_end.loc[:,'flag_too_far'] = (index_run_segment_start_end
+                                                       .loc[:,'dist_to_nearest_point']
+                                                      .apply(lambda x: x > 50))
+    
+    index_run_segment_start_end.loc[:,'flag_wrong_order'] = (index_run_segment_start_end
+                                                         .groupby(['filename','index_run_start']
+                                                                  , sort = False)
+                                                     .index_loc
+                                                     #diff takes difference from previous row - if no previous row in the group, the value is NA
+                                                     .diff()
+                                                     .fillna(0)
+                                                     #shortcut for "less than"
+                                                     .lt(0))
+
     # Generate Summary
     summary_run_segment = (
         include_segment_summary(
             rawnav_q_dat = rawnav_gdf_,
             rawnav_sum_dat = rawnav_sum_dat_,
-            nearest_seg_boundary_dat = index_run_segment_start_end_2,
+            nearest_seg_boundary_dat = index_run_segment_start_end,
             seg_length_ = seg_length
         )
     )
 
     # Could do this earlier, but need to remove geometry reference in get_first_last_stop_rawnav if so
-    index_run_segment_start_end = ll.drop_geometry(index_run_segment_start_end_2)
+    index_run_segment_start_end = ll.drop_geometry(index_run_segment_start_end)
       
     return(index_run_segment_start_end, summary_run_segment)
     

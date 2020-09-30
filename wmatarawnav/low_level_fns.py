@@ -92,6 +92,7 @@ def explode_first_last(gdf):
     line_first_last: gpd.DataFrame, geodataframe with one row for the first and last vertex 
         of each geometry in the input gdf. The attributes of each original row are carried 
         forward to the output gdf.
+    NOTE -- BAM - come back - I think this can be cleaner. See shapely line functions in bus route --> street code.
     """
     assert(all(gdf.geom_type.to_numpy() == "LineString")), print("Currently only LineString segment geometry supported")
     line_first_last_list = []
