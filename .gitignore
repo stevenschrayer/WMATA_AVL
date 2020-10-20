@@ -6,6 +6,12 @@ __pycache__/
 #processed data
 data/02-processed/*.csv
 data/02-processed/*.geojson
+data/02-processed/*.cpg
+data/02-processed/*.dbf
+data/02-processed/*.prj
+data/02-processed/*.shp
+data/02-processed/*.shx
+data/02-processed/*.zip
 data/02-processed/*.parquet
 data/02-processed/exports_*
 

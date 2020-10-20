@@ -96,6 +96,12 @@ def decompose_traveltime(
     # we just readd column if it's automatically dropped for lack of values
     if ('t_stop' not in t_stop1_by_run.columns):
         t_stop1_by_run= t_stop1_by_run.assign(t_stop = 0)
+
+    if ('t_l_initial' not in t_stop1_by_run.columns):
+        t_stop1_by_run= t_stop1_by_run.assign(t_l_initial = 0)
+
+    if ('t_l_addl' not in t_stop1_by_run.columns):
+        t_stop1_by_run= t_stop1_by_run.assign(t_l_addl = 0)
         
     # Calculate T_stop2
     
@@ -258,6 +264,7 @@ def decompose_stop_area(rawnav,
         t_stop = For vehicles that do not serve passengers, the time between the first time the 
         vehicle stops in the stop area to the time it begins moving for the last time in the stop
          area. 
+         t_stop2 = lambda x: x.t_decacc + x.t_l_initial
         t_l_addl = time from first door close to acceleration
         t_accel_phase = time from acceleration to exiting stop zone (used to help estimate aacc
     """
