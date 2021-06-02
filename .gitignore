@@ -147,7 +147,9 @@ dmypy.json
 !data/readme.txt
 !docs/readme.txt
 !requirements.txt
+!data/00-raw/demo_data
 !data/00-raw/demo_data/*
+!data/00-raw/demo_data/*/*
 *.xml
 .idea/WMATA_AVL.iml
 analysis/bus-lane-analysis/2020-07-busstate_file_IDs.csv
