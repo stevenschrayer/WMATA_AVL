@@ -178,3 +178,30 @@ def reset_col_names(df):
     df = df.reset_index()
     df.columns = df.columns.str.replace(pat = "_$",repl = "", regex = True)
     return(df)
+
+def semi_join(left,right,on):
+    """
+    # https://gis.stackexchange.com/questions/222315/geopandas-find-nearest-point-in-other-dataframe
+    Parameters
+    ----------
+    left : pd.DataFrame,
+        dataframe to keep records from
+    right: pd.DataFrame,
+        dataframe to use to filter
+    on: list,
+        list of columns present in both dataframes to filter on
+    Returns
+    -------
+    df : pd.DataFrame,
+        all records of left that are found in right
+    Notes
+    -----
+    Pandas has a fun way of returning hierarchical column names that don't lend themselves well
+    to continuing to do work on a dataframe. This addresses that.
+    """
+    
+    out = (
+        left[left[on].agg(tuple,1).isin(right[on].agg(tuple,1))]
+    )
+
+    return(out)

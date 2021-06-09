@@ -7,6 +7,9 @@ Created on Mon June 7 03:48 2021
 import pandas as pd
 import numpy as np
 from . import low_level_fns as ll
+from plotly.offline import plot
+import plotly.graph_objs as go
+import plotly.express as px
 
 def decompose_basic_mt(
     rawnav,
@@ -65,7 +68,6 @@ def decompose_basic_mt(
     # overlapping categories 
     # TODO: remove items where the stop sequence is out of order
     # TODO: address case where stop areas are overlapping
-    # TODO: address cases where stop sequences are out of order
     # TODO: check that sequence of stop_window_start and stop_window_end is monotinic
     # TODO: perhaps check that stop sequences are complete
     
@@ -576,4 +578,60 @@ def prepare_ts_chart_data(rawnav):
         .iloc[:-3]
     )
     
+    # if you have multiple trip instances, you now need to recalculate a unique 
+    # sequence across all cases 
+    rawnav_chart_all['sequence'] = (
+       	rawnav_chart_all['sequence']
+       	.transform(lambda x: x.diff().ne(0).cumsum())
+    )
+    
+    # I'm a hack!
+    rawnav_chart_all = (
+        rawnav_chart_all 
+        .query('high_level_decomp != "you shouldnt see this"')
+        )
+    
     return(rawnav_chart_all)
+
+def plot_ts_data(ts_data):
+    
+    fig = px.line(
+        ts_data,
+        x = 'min_past_st',
+        y = 'odom_mi',
+        color = 'high_level_decomp',
+        custom_data = ['route','pattern','start_date_time','high_level_decomp'],
+        line_group = 'sequence', # need to make unique id, but for now just showing one,
+        labels={ # replaces default labels by column name
+                "high_level_decomp": "High-Level Decomposition",  
+                "min_past_st": "Trip Time Elapsed (Minutes)", 
+                "odom_mi": "Trip Odometer Reading (Miles)"
+            },
+            category_orders={
+                "high_level_deocmp": 
+                    ["<5 mph", 
+                     ">= 5mph", 
+                     "Non-Passenger",
+                     "Passenger"], 
+            },
+            color_discrete_map={ 
+                "<5 mph": "#A34F3F",  # bluish
+                ">= 5mph": "#20918d", #green
+                "Non-Passenger" : "#962c91", #purple
+                "Passenger" :  '#ec7c54' #orange
+            },
+            template="simple_white"
+    )
+        
+    fig.update_traces(
+        hovertemplate="<br>".join([
+            "Time Past Start (Minutes): %{x}",
+            "Odometer (Miles): %{y}",
+            "Route: %{customdata[0]}",
+            "Pattern: %{customdata[1]}",
+            "Start Date-Time: %{customdata[2]}",
+            "Time Type: %{customdata[3]}"
+        ])
+    )
+    
+    return(fig)
