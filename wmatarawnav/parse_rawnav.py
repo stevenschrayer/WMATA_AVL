@@ -588,6 +588,12 @@ def find_all_tags(zip_folder_path, quiet=True):
         print("*" * 100)
         tag_line_elements = []
         tag_line_elements.append(',,,,,,')
+    except:
+        print("*" * 100)
+        print("Unexpected error:")
+        print("*" * 100)
+        tag_line_elements = []
+        tag_line_elements.append(',,,,,,')
     return tag_line_elements
 
 
