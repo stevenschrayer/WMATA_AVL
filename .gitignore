@@ -153,3 +153,5 @@ dmypy.json
 *.xml
 .idea/WMATA_AVL.iml
 analysis/bus-lane-analysis/2020-07-busstate_file_IDs.csv
+!analysis/exploratory/decomposition/image/
+!analysis/exploratory/decomposition/image/*
