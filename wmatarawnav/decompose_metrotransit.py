@@ -633,5 +633,9 @@ def plot_ts_data(ts_data):
             "Time Type: %{customdata[3]}"
         ])
     )
+
+    fig.update_traces(
+        line = dict(width = 3)
+    )
     
     return(fig)
