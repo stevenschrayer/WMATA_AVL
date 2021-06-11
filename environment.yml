@@ -1,5 +1,6 @@
 name: wmatarawnavproj
 channels:
+  - spyder-ide
   - conda-forge
   - defaults
 dependencies:
@@ -7,6 +8,7 @@ dependencies:
   - alabaster=0.7.12=py_0
   - argh=0.26.2=py37_1001
   - arrow-cpp=0.17.1=py37h1234567_3_cpu
+  - asn1crypto=1.4.0=pyh9f0ad1d_0
   - astroid=2.4.1=py37hc8dfbb8_0
   - atomicwrites=1.4.0=pyh9f0ad1d_0
   - attrs=19.3.0=py_0
@@ -23,8 +25,8 @@ dependencies:
   - brotlipy=0.7.0=py37h4ab8f01_1000
   - bzip2=1.0.8=hfa6e2cd_2
   - c-ares=1.15.0=h2fa13f4_1001
-  - ca-certificates=2020.6.20=hecda079_0
-  - certifi=2020.6.20=py37hc8dfbb8_0
+  - ca-certificates=2021.5.30=h5b45459_0
+  - certifi=2021.5.30=py37h03978a9_0
   - cffi=1.14.0=py37ha419a9e_0
   - cfitsio=3.470=he774522_5
   - chardet=3.0.4=py37hc8dfbb8_1006
@@ -32,6 +34,7 @@ dependencies:
   - click-plugins=1.1.1=py_0
   - cligj=0.5.0=py_0
   - cloudpickle=1.4.1=py_0
+  - codec2=0.9.2=h301d43c_1
   - colorama=0.4.3=py_0
   - cryptography=2.9.2=py37h26f1ce3_0
   - curl=7.69.1=h1dcc11c_0
@@ -42,6 +45,7 @@ dependencies:
   - entrypoints=0.3=py37hc8dfbb8_1001
   - et_xmlfile=1.0.1=py_1001
   - expat=2.2.9=he025d50_2
+  - fftw=3.3.8=nompi_h24e91a8_1111
   - fiona=1.8.13=py37hef9e828_1
   - flake8=3.7.9=py37hc8dfbb8_1
   - folium=0.11.0=py_0
@@ -58,7 +62,10 @@ dependencies:
   - gflags=2.2.2=he025d50_1002
   - glib=2.64.3=he4de6d7_0
   - glog=0.4.0=h0174b99_3
+  - gnuradio-core=3.8.1.0=py37h5b78add_10
+  - gnuradio-qtgui=3.8.1.0=py37hf18ab55_10
   - grpc-cpp=1.29.0=h7c6d948_0
+  - gsl=2.6=h86b8168_0
   - hdf4=4.2.13=hf8e6fe8_1003
   - hdf5=1.10.6=nompi_ha405e13_100
   - icc_rt=2019.0.0=h0cc432a_1
@@ -73,6 +80,7 @@ dependencies:
   - ipykernel=5.3.0=py37h5ca1d4c_0
   - ipython=7.15.0=py37hc8dfbb8_0
   - ipython_genutils=0.2.0=py_1
+  - ipywidgets=7.6.3=pyhd3deb0d_0
   - isort=4.3.21=py37hc8dfbb8_1
   - jdcal=1.4.1=py_0
   - jedi=0.15.2=py37_0
@@ -81,6 +89,7 @@ dependencies:
   - jsonschema=3.2.0=py37hc8dfbb8_1
   - jupyter_client=6.1.3=py_0
   - jupyter_core=4.6.3=py37hc8dfbb8_1
+  - jupyterlab_widgets=1.0.0=pyhd8ed1ab_1
   - kealib=1.4.13=h3b59ab9_1
   - keyring=21.2.1=py37hc8dfbb8_0
   - krb5=1.17.1=hdd46e55_0
@@ -103,8 +112,12 @@ dependencies:
   - libspatialite=4.3.0a=h51df0ed_1038
   - libssh2=1.9.0=h3235a2c_2
   - libtiff=4.1.0=h885aae3_6
+  - libusb=1.0.23=ha925a31_3
   - libwebp-base=1.1.0=hfa6e2cd_3
   - libxml2=2.9.10=h5d81f1c_1
+  - libxslt=1.1.33=h579f668_1
+  - log4cpp=1.1.3=h6538335_1001
+  - lxml=4.5.2=py37h8ba8a40_0
   - lz4-c=1.9.2=h62dcd97_1
   - m2w64-expat=2.1.1=2
   - m2w64-gcc-libgfortran=5.3.0=6
@@ -115,12 +128,15 @@ dependencies:
   - m2w64-libiconv=1.14=6
   - m2w64-libwinpthread-git=5.0.0.4634.697f757=2
   - m2w64-xz=5.2.2=2
+  - mako=1.1.3=pyh9f0ad1d_0
   - markupsafe=1.1.1=py37h8055547_1
   - mccabe=0.6.1=py_1
+  - menuinst=1.4.16=py37_0
   - mistune=0.8.4=py37h8055547_1001
   - mkl=2020.0=166
   - mkl-service=2.3.0=py37hb782905_0
   - more-itertools=8.3.0=py_1
+  - mpir=3.0.0=he025d50_1002
   - msys2-conda-epoch=20160418=1
   - munch=2.5.0=py_0
   - nbconvert=5.6.1=py37hc8dfbb8_1
@@ -130,7 +146,7 @@ dependencies:
   - numpydoc=1.0.0=pyh9f0ad1d_0
   - openjpeg=2.3.1=h57dd2e7_3
   - openpyxl=3.0.3=py_0
-  - openssl=1.1.1g=he774522_0
+  - openssl=1.1.1k=h8ffe710_0
   - packaging=20.4=pyh9f0ad1d_0
   - pandas=1.0.4=py37h3bbf574_0
   - pandasql=0.7.3=py37_1
@@ -142,8 +158,10 @@ dependencies:
   - pathtools=0.1.2=py_1
   - pcre=8.44=h6538335_0
   - pexpect=4.8.0=py37hc8dfbb8_1
+  - pg8000=1.19.5=pyhd8ed1ab_0
   - pickleshare=0.7.5=py37hc8dfbb8_1001
   - pip=20.0.2=py37_3
+  - plotly=4.14.3=pyh44b312d_0
   - pluggy=0.13.1=py37hc8dfbb8_1
   - poppler=0.87.0=h0cd1227_1
   - poppler-data=0.4.9=1
@@ -152,6 +170,7 @@ dependencies:
   - prometheus_client=0.8.0=pyh9f0ad1d_0
   - prompt-toolkit=3.0.5=py_0
   - psutil=5.7.0=py37h8055547_1
+  - psycopg2=2.8.6=py37hcd4344a_1
   - py=1.8.1=py_0
   - pyarrow=0.17.1=py37h1234567_3_cpu
   - pycodestyle=2.5.0=py37_0
@@ -171,6 +190,7 @@ dependencies:
   - pytest=5.4.3=py37hc8dfbb8_0
   - python=3.7.7=h81c818b_4
   - python-dateutil=2.8.1=py_0
+  - python-dotenv=0.17.1=pyhd8ed1ab_0
   - python-jsonrpc-server=0.3.4=pyh9f0ad1d_1
   - python-language-server=0.31.10=py37hc8dfbb8_0
   - python_abi=3.7=1_cp37m
@@ -185,11 +205,14 @@ dependencies:
   - qtawesome=0.7.2=pyh9f0ad1d_0
   - qtconsole=4.7.4=pyh9f0ad1d_0
   - qtpy=1.9.0=py_0
+  - qwt=6.1.5=h265ddaf_0
   - re2=2020.05.01=h33f27b4_1
   - requests=2.23.0=pyh8c360ce_2
+  - retrying=1.3.3=py_2
   - rope=0.17.0=pyh9f0ad1d_0
   - rtree=0.9.4=py37h804a536_1
   - scipy=1.4.1=py37h9439919_0
+  - scramp=1.4.0=pyhd8ed1ab_0
   - send2trash=1.5.0=py_0
   - setuptools=46.4.0=py37_0
   - shapely=1.7.0=py37he1cf020_3
@@ -206,6 +229,7 @@ dependencies:
   - sphinxcontrib-serializinghtml=1.1.4=py_0
   - spyder=4.1.3=py37hc8dfbb8_0
   - spyder-kernels=1.9.1=py37hc8dfbb8_0
+  - spyder-unittest=0.4.1=py_0
   - sqlalchemy=1.3.17=py37h4ab8f01_0
   - sqlite=3.31.1=h2a8f88b_1
   - tbb=2020.1=he980bc4_0
@@ -221,11 +245,13 @@ dependencies:
   - ujson=1.35=py37h63f7a3c_1002
   - urllib3=1.25.9=py_0
   - vc=14.1=h0510ff6_4
+  - volk=2.3.0=py37h6dfd932_1
   - vs2015_runtime=14.16.27012=hf0eaf9b_2
   - watchdog=0.10.2=py37_0
   - wcwidth=0.2.2=pyh9f0ad1d_0
   - webencodings=0.5.1=py_1
   - wheel=0.34.2=py37_0
+  - widgetsnbextension=3.5.1=py37h03978a9_4
   - win_inet_pton=1.1.0=py37_0
   - wincertstore=0.2=py37_0
   - winpty=0.4.3=4
