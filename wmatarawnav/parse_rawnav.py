@@ -229,7 +229,16 @@ def clean_rawnav_data(data_dict, filename):
     tagline_data.rename(columns={'new_line_no': "index_run_start_original"}, inplace=True)
     
     # Get trip summary
-    summary_data = get_run_summary(data=rawnavdata, tagline_data=tagline_data)
+    try:
+        summary_data = get_run_summary(data=rawnavdata, tagline_data=tagline_data)
+    except:
+        # added try-catch because of error in get_run_summary in some cases
+        # I'm not sure yet if this will result in issues when we attempt to combine 
+        # good files with bad.
+        print("TagLists Did not match in file {}".format(filename))
+        # These None's will get dropped during concatenation
+        return_dict = {'rawnavdata': None, 'summary_data': None}
+        return return_dict
     
     # Rename vals
     column_nm_map = {0: 'lat', 
@@ -336,6 +345,10 @@ def get_run_summary(data, tagline_data):
     temp = tagline_data[['index_run_start_original', 'index_run_end_original']]
     temp = temp.astype('int32')
     raw_da_cpy = data[['index_loc', 0, 1, 5, 6]].copy()
+    # TODO: this line is breaking on 
+    # 0/ 06:24:38 BWRawNav Collection Module was STARTED 10.4.131.27 DB=S129a_SBA
+    # is it the leading zero? i'm not sure
+
     raw_da_cpy[['index_loc', 5, 6]] = raw_da_cpy[['index_loc', 5, 6]].astype('int32')
     raw_da_cpy.rename(columns={0: 'lat', 
                                1: 'long', 
@@ -585,6 +598,12 @@ def find_all_tags(zip_folder_path, quiet=True):
     except KeyError as keyerr:
         print("*" * 100)
         print("Text file name doesn't match parent zip folder for': {}. Error: {}".format(zip_folder_path,keyerr))
+        print("*" * 100)
+        tag_line_elements = []
+        tag_line_elements.append(',,,,,,')
+    except:
+        print("*" * 100)
+        print("Unexpected error:")
         print("*" * 100)
         tag_line_elements = []
         tag_line_elements.append(',,,,,,')
