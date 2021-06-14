@@ -122,6 +122,7 @@ route_rawnav_tag_dict = {}
 # Iterate over each file, skipping to the first row where data in our filtered inventory is found
 # Rather than read run-by-run, we read the rest of the file, then filter to relevant routes later
 rawnav_inv_filt_first = rawnav_inventory_filtered.groupby(['fullpath', 'filename']).line_num.min().reset_index()
+# TODO: do we need a copy(deep=True) here?
 rawnav_inventory_filtered_valid = rawnav_inventory_filtered
 
 for index, row in rawnav_inv_filt_first.iterrows():
@@ -152,6 +153,7 @@ rawnav_data_dict = {}
 summary_data_dict = {}
 
 for key, datadict in route_rawnav_tag_dict.items():
+    print(key)
     temp_dat = wr.clean_rawnav_data(
         data_dict=datadict,
         filename=key)
