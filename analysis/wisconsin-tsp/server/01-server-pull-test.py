@@ -28,6 +28,17 @@ if os.getlogin() == "WylieTimmerman":
     path_source_data = os.path.join(r"C:\Downloads")
     path_processed_data = os.path.join(path_sp, "Data", "02-Processed") 
     config = dotenv_values(os.path.join(path_working, '.env'))
+    
+elif os.getlogin() == "JackMcDowell":
+    # Working Paths
+    
+    path_working = r"C:\OD\OneDrive - Foursquare ITP\Documents\0002 R\WMATA Datamart\WMATA_AVL"
+    os.chdir(os.path.join(path_working))
+    sys.path.append(r"C:\OD\OneDrive - Foursquare ITP\Documents\0002 R\WMATA Datamart\WMATA_AVL")
+    path_sp = r"C:\OD\Foursquare ITP\Foursquare ITP SharePoint Site - Shared Documents\WMATA Datamart Program Support\Task 3 - Bus Priority"
+    path_source_data = os.path.join(r"C:\Users\JackMcDowell\Downloads")
+    path_processed_data = os.path.join(path_sp, "Data", "02-Processed") 
+    config = dotenv_values(os.path.join(path_working, '.env'))
 
 else:
     raise FileNotFoundError("Define the path_working, path_source_data, gtfs_dir, \
