@@ -192,3 +192,68 @@ dbExecute(conn, statement)
 dbDisconnect(conn)
 
 
+
+# Stop Index --------------------------------------------------------------
+
+filelist <- 
+  list.files(path = file.path(path_data,"stop_index.parquet"),
+             recursive = TRUE,
+             full.names = TRUE)
+
+stop_index <- 
+  map_dfr(filelist,
+          ~ arrow::read_parquet(.x))
+
+dbWriteTable(
+  conn,
+  name = Id(schema = Sys.getenv('pg_schema'), table = "stop_index"),
+  value = stop_index,
+  overwrite = FALSE, 
+  append = TRUE,
+  row.names = FALSE
+)
+
+# Change owner
+statement <-
+  glue_sql("ALTER TABLE {`schema`}.{`table`} OWNER TO {`groupname`}",
+           schema = Sys.getenv("pg_schema"),
+           table = "stop_index",
+           groupname = "datamart_group",
+           .con = conn)
+
+dbExecute(conn, statement)
+
+
+
+# Stop Summary --------------------------------------------------------------
+
+filelist <- 
+  list.files(path = file.path(path_data,"stop_summary.parquet"),
+             recursive = TRUE,
+             full.names = TRUE)
+
+stop_summary <- 
+  map_dfr(filelist,
+          ~ arrow::read_parquet(.x))
+
+dbWriteTable(
+  conn,
+  name = Id(schema = Sys.getenv('pg_schema'), table = "stop_summary"),
+  value = stop_summary,
+  overwrite = FALSE, 
+  append = TRUE,
+  row.names = FALSE
+)
+
+# Change owner
+statement <-
+  glue_sql("ALTER TABLE {`schema`}.{`table`} OWNER TO {`groupname`}",
+           schema = Sys.getenv("pg_schema"),
+           table = "stop_summary",
+           groupname = "datamart_group",
+           .con = conn)
+
+dbExecute(conn, statement)
+
+
+
