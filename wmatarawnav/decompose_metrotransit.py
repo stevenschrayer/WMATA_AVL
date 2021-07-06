@@ -7,15 +7,16 @@ Created on Mon June 7 03:48 2021
 import pandas as pd
 import numpy as np
 from . import low_level_fns as ll
-from plotly.offline import plot
-import plotly.graph_objs as go
-import plotly.express as px
+from . import decompose_rawnav as dr
 
-def decompose_basic_mt(
+def assign_stop_area(
     rawnav,
-    speed_thresh_fps = 7.333,
+    stop_field = "stop_window",
     upstream_ft = 150,
-    downstream_ft = 150):
+    downstream_ft = 150
+):
+    # TODO: consider adding a sequential numbering for the parts that aren't in a stop window.
+    # TODO: assert that stop_field exists
 
     # TODO: break this down into more subfunctions so we can show the intermediate results more
     # clealry, test, etc.
@@ -25,9 +26,14 @@ def decompose_basic_mt(
     # This method seems to work well enough. Considered using cut functions as an alternative to 
     # merge_asof, but this works well enough. 
     # TODO: door open can actually happen somewhat away from the stop area indicator, should confirm
+    if (stop_field == "stop_window"):
+        rawnav_stop = rawnav[rawnav.stop_window.str.contains("^E")]
+    else:
+        rawnav_stop = rawnav[rawnav[stop_field].notnull()]
+
     rawnav_stop_window_ind = (
-        rawnav[rawnav.stop_window.str.contains("^E")]
-        .filter(['filename','index_run_start','stop_window','odom_ft'])
+        rawnav_stop
+        .filter(['filename','index_run_start',stop_field,'odom_ft'])
         .assign(
             stop_window_start = lambda x, upft = upstream_ft: x.odom_ft - upft,
             stop_window_end = lambda x, dnft = downstream_ft: x.odom_ft + dnft
@@ -63,14 +69,13 @@ def decompose_basic_mt(
         )
         .drop(columns = ['odom_ft_max','odom_ft'])
     )
-        
+
     # note: i think the biggest to-do is to drop cases with repeated stops or 
     # overlapping categories 
     # TODO: remove items where the stop sequence is out of order
     # TODO: address case where stop areas are overlapping
     # TODO: check that sequence of stop_window_start and stop_window_end is monotinic
     # TODO: perhaps check that stop sequences are complete
-    
     
     # MERGE TOGETHER
     # TODO: should set index sooner
@@ -133,12 +138,25 @@ def decompose_basic_mt(
             ]
         )
     )
-        
+
+    return(rawnav)
+
+def decompose_basic_mt(
+    rawnav,
+    speed_thresh_fps = 7.333):
+
+    # TODO: assert that stop_window_area exists
+
     # %% IDENTIFY PAX VS. NON-PAX STOP AREA
     
     # Here we yank some code from decompose_rawnav.py; it's typically only applied to a filtered set
     # of stop data, but for now, we'll just tack it on.
     
+    # add rolling values
+    rawnav = (
+        dr.calc_rolling_vals(rawnav)
+    )
+
     # Add binary variables
     rawnav_stop_area = (
             rawnav
@@ -513,129 +531,118 @@ def decompose_basic_mt(
         
     return(rawnav)
 
-def prepare_ts_chart_data(rawnav):
-    
-    # we need to create each colored line as a separate trace, and create extra points between the 
-    # lines 
-    rawnav_chart = (
+def get_stop_ff(
+    rawnav,
+    method = "mt",
+    use_ntile = 0.95
+):
+        # assert method.isin(['mt','ntile','all'])
+        # if method = ntile, then make sure use_ntile is non-nul
+        # TODO: assert on possible values of metro transit decomposition method
+        # TODO: assert somehow that we have stop windows already assinged
+
+    run_stop_area_speed = (
         rawnav
+        .groupby(['filename','index_run_start','stop_window_area'])
+        .agg({
+            "odom_ft" : ['min','max'],
+            "sec_past_st" : ['min','max']
+        })
+        .pipe(ll.reset_col_names)
         .assign(
-            high_level_decomp_int = lambda x: 
-                x.high_level_decomp.astype('category').cat.codes
-            )
+            stop_window_fps = lambda x: 
+                (x.odom_ft_max - x.odom_ft_min) / 
+                    (x.sec_past_st_max - x.sec_past_st_min)
         )
-    
-    rawnav_chart['sequence'] = (
-        	rawnav_chart
-        	.groupby(['filename','index_run_start'])['high_level_decomp_int']
-        	.transform(lambda x: x.diff().ne(0).cumsum())
-        )
-    
-    rawnav_chart['dupe'] = False
-    
-    rawnav_chart_dupe = rawnav_chart.copy(deep = True)
-    
-    rawnav_chart_dupe['sequence_shift'] = (
-        rawnav_chart_dupe
-        .groupby(['filename','index_run_start'])['sequence']
-        .shift(1, fill_value = 0)
-    )
-    
-    rawnav_chart_dupe['high_level_decomp_shift'] = (
-        rawnav_chart_dupe
-        .groupby(['filename','index_run_start'])['high_level_decomp']
-        .shift(1, fill_value = "nada")
-    )
-    
-    rawnav_chart_dupe = (
-        rawnav_chart_dupe
-        .groupby(['filename','index_run_start','sequence_shift'])
-        .tail(1)
-        )
-    
-    rawnav_chart_dupe = (
-        rawnav_chart_dupe
-        .groupby(['filename','index_run_start'])
-        .apply(lambda group: group.iloc[2:])     
-        .apply(lambda group: group.iloc[:-1])     
-    )
-    
-    rawnav_chart_dupe = (
-        rawnav_chart_dupe
-        .drop(columns = ['high_level_decomp','sequence'])
-        .rename(columns = {'high_level_decomp_shift' : 'high_level_decomp',
-                 'sequence_shift' : 'sequence'},
-                errors="raise")
-        .assign(
-            dupe = True    
-        )
-    )
-    # should be back at 37 cols
-    rawnav_chart_all = (
-        rawnav_chart
-        .append(rawnav_chart_dupe)
-        .sort_values(['filename','index_run_start','sequence','index_loc'])
-        .iloc[:-3]
-    )
-    
-    # if you have multiple trip instances, you now need to recalculate a unique 
-    # sequence across all cases 
-    rawnav_chart_all['sequence'] = (
-       	rawnav_chart_all['sequence']
-       	.transform(lambda x: x.diff().ne(0).cumsum())
-    )
-    
-    # I'm a hack!
-    rawnav_chart_all = (
-        rawnav_chart_all 
-        .query('high_level_decomp != "you shouldnt see this"')
-        )
-    
-    return(rawnav_chart_all)
-
-def plot_ts_data(ts_data):
-    
-    fig = px.line(
-        ts_data,
-        x = 'min_past_st',
-        y = 'odom_mi',
-        color = 'high_level_decomp',
-        custom_data = ['route','pattern','start_date_time','high_level_decomp'],
-        line_group = 'sequence', # need to make unique id, but for now just showing one,
-        labels={ # replaces default labels by column name
-                "high_level_decomp": "High-Level Decomposition",  
-                "min_past_st": "Trip Time Elapsed (Minutes)", 
-                "odom_mi": "Trip Odometer Reading (Miles)"
-            },
-            category_orders={
-                "high_level_deocmp": 
-                    ["<5 mph", 
-                     ">= 5mph", 
-                     "Non-Passenger",
-                     "Passenger"], 
-            },
-            color_discrete_map={ 
-                "<5 mph": "#A34F3F",  # bluish
-                ">= 5mph": "#20918d", #green
-                "Non-Passenger" : "#962c91", #purple
-                "Passenger" :  '#ec7c54' #orange
-            },
-            template="simple_white"
-    )
-        
-    fig.update_traces(
-        hovertemplate="<br>".join([
-            "Time Past Start (Minutes): %{x}",
-            "Odometer (Miles): %{y}",
-            "Route: %{customdata[0]}",
-            "Pattern: %{customdata[1]}",
-            "Start Date-Time: %{customdata[2]}",
-            "Time Type: %{customdata[3]}"
-        ])
     )
 
-    fig.update_traces(
-        line = dict(width = 3)
+    run_stop_area_all = (
+        run_stop_area_speed
+        .assign(
+            mph = lambda x: x.stop_window_fps / 1.467
+        )
+        .groupby(['stop_window_area'])
+        .agg({
+            'mph' : 
+                [
+                    'min',
+                    lambda x: x.quantile(.5),
+                    lambda x: x.quantile(.90),
+                    lambda x: x.quantile(.95),
+                    lambda x: x.quantile(.99),
+                    'max'
+                ]
+        })
+        .pipe(ll.reset_col_names)
+        .rename(
+            columns = {
+                "mph_<lambda_0>" : "mph_med",
+                "mph_<lambda_1>" : "mph_p90",
+                "mph_<lambda_2>" : "mph_p95",
+                "mph_<lambda_3>" : "mph_p99"
+        })
+        .melt(
+            id_vars = ['stop_window_area'],
+            value_vars = ['mph_min','mph_med','mph_p90','mph_p95','mph_p99','mph_max'],
+            var_name = 'ntile',
+            value_name = 'mph'
+        )
+    )   
+
+    if (method == "mt"):
+        # note that here we don't separate out passenger delay when calculating the freeflow times
+        # per their paper
+        # i think we'll also just have to discard first and last stop delay, given the issues we've
+        # identified there. That will also help sort out the directionality issue for now
+        # TODO: return to address issue of directionality at a stop that might be served by 
+        # buses operating in different directions (maybe certain transit center bays)
+        run_stop_area_return = (
+            run_stop_area_all
+            .loc[run_stop_area_all['ntile'] == 'mph_max',]
+        )
+    elif (method == 'ntile'):
+        run_stop_area_return = (
+            run_stop_area_all
+            .loc[run_stop_area_all['ntile'] == use_ntile,]
+        )
+    elif (method == "all"):
+        run_stop_area_return = run_stop_area_all
+
+    return run_stop_area_return
+
+def decompose_full_mt(
+    rawnav,
+    stop_ff
+):
+
+    # TODO:
+    # set the assertions
+
+    rawnav_decompose = (
+        rawnav
+        .group_by(['filename','index_run_start','stop_window_area','high_level_decomp'])
+        .agg(
+            {
+                'secs_past_st' : [lambda x: max(x) - min(x)],
+                'odom_ft' : [lambda x: max(x) - min(x)]
+            }
+        )
+        .pipe(ll.reset_col_names)
+        .rename(
+            columns = 
+                {
+                    'odom_ft_<lambda>': 'odom_ft_total',
+                    'sec_past_st_<lambda>':'t_segment_total'
+                }
+        )
     )
-    
-    return(fig)
+
+    rawnav_decompose_ff = (
+        rawnav_decompose
+        # join in the freeflow speeds
+        .merge(
+            stop_ff,
+            left_on = ['stop_window_area'],
+            right_on = ['stop_window_area']
+        )
+    )

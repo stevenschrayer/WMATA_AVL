@@ -5,3 +5,4 @@ from .low_level_fns import *
 from .rawnav_read_write import *
 from .decompose_rawnav import *
 from .decompose_metrotransit import *
+from .visualize_decomposition import *
