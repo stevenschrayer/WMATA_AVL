@@ -8,6 +8,7 @@ import os
 import inflection
 import pandas as pd
 import pyodbc
+import fiona
 import geopandas as gpd
 from shapely.geometry import Point
 from shapely.geometry import LineString

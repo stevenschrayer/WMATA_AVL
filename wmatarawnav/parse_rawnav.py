@@ -8,6 +8,7 @@ Purpose: Functions for processing rawnav data
 import zipfile, re, numpy as np, pandas as pd, io, os, shutil, glob
 import pandasql as ps
 from zipfile import BadZipfile
+import fiona
 import geopandas as gpd
 from shapely.geometry import Point
 from pandas.io.parsers import ParserError

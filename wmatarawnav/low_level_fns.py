@@ -5,6 +5,7 @@ Created on Mon Jul  6 22:38:06 2020
 @author: WylieTimmerman
 """
 import pandas as pd 
+import fiona
 import geopandas as gpd
 from shapely.geometry import Point
 from scipy.spatial import cKDTree
