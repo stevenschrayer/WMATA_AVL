@@ -160,7 +160,6 @@ def ckdnearest(gdA, gdB):
 
 def reset_col_names(df):
     """
-    # https://gis.stackexchange.com/questions/222315/geopandas-find-nearest-point-in-other-dataframe
     Parameters
     ----------
     df : pd.DataFrame,
