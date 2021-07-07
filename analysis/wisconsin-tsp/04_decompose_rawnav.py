@@ -39,7 +39,7 @@ if os.getlogin() == "WylieTimmerman":
 
 # Globals
 tsp_route_list = ['30N','30S','33','31']
-analysis_routes = ['30N']
+analysis_routes = tsp_route_list
 analysis_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 # EPSG code for WMATA-area work
 wmata_crs = 2248
@@ -208,7 +208,7 @@ rawnav_run_decomp_exp = (
 path_output = os.path.join(path_sp,"data","01-Interim","wisconsin_decomp_mt.parquet")
 
 pq.write_to_dataset(
-    table = pa.Table.from_pandas(rawnav_run_decomp),
+    table = pa.Table.from_pandas(rawnav_run_decomp_exp),
     root_path = path_output
 )
 
