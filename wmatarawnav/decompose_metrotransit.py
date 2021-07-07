@@ -20,7 +20,7 @@ def assign_stop_area(
 
     # TODO: break this down into more subfunctions so we can show the intermediate results more
     # clealry, test, etc.
-    # %% IDENTIFY STOP WINDOWS
+    #  IDENTIFY STOP WINDOWS
     # Identify the start and end of stop windows
     # WE'll then use merge_asof to identify pings within the stop window.
     # This method seems to work well enough. Considered using cut functions as an alternative to 
@@ -138,8 +138,45 @@ def assign_stop_area(
             ]
         )
     )
-
-    return(rawnav)
+        
+    rawnav_segs = (
+        rawnav
+        .assign(
+            stop_window_forw = lambda x: x.stop_window_area.ffill(),
+            stop_window_back = lambda x: x.stop_window_area.bfill()
+        )
+        .assign(
+            stop_seg = lambda x:
+                np.select(
+                    [
+                        (x.stop_window_forw == x.stop_window_back),
+                        (
+                            (x.stop_window_forw != x.stop_window_back) &
+                             x.stop_window_forw.notnull() &
+                             x.stop_window_back.notnull()
+                         ),
+                        (x.stop_window_forw.isnull()),
+                        (x.stop_window_back.isnull())
+                    ],
+                    [
+                        np.nan,
+                        (x.stop_window_forw + "_" + x.stop_window_back),
+                        ("start_" + x.stop_window_back),
+                        (x.stop_window_forw + "_end")
+                    ]
+                )
+        )
+        .drop(['stop_window_forw','stop_window_back'], axis = "columns")
+        .assign(trip_seg = lambda x:
+                np.where(
+                    x.stop_window_area.notnull(),
+                    x.stop_window_area,
+                    x.stop_seg
+                    )
+        )
+    )
+        
+    return(rawnav_segs)
 
 def decompose_basic_mt(
     rawnav,
@@ -147,7 +184,7 @@ def decompose_basic_mt(
 
     # TODO: assert that stop_window_area exists
 
-    # %% IDENTIFY PAX VS. NON-PAX STOP AREA
+    #### IDENTIFY PAX VS. NON-PAX STOP AREA
     
     # Here we yank some code from decompose_rawnav.py; it's typically only applied to a filtered set
     # of stop data, but for now, we'll just tack it on.
@@ -466,7 +503,7 @@ def decompose_basic_mt(
         .filter(items = ['filename','index_run_start','index_loc','stop_area_phase'])
     )
     
-    # %% CREATE NON-STOP AREA DECOMP
+    #### CREATE NON-STOP AREA DECOMP
     # TODO: do i still have NaN fps_next3 values? if so this will probably bust up
     # also feels like this 999999 max thing is dodgy
     rawnav = (
@@ -498,7 +535,7 @@ def decompose_basic_mt(
         )
     )
     
-    # %% CREATE OVERALL DECOMPOSITION
+    #### CREATE OVERALL DECOMPOSITION
     rawnav = (
         rawnav
         .merge(
@@ -512,7 +549,7 @@ def decompose_basic_mt(
         rawnav
         .assign(
             # this is kinda inefficient
-            high_level_decomp = lambda x:
+            basic_decomp = lambda x:
                 np.select(
                     [
                         pd.notna(x.in_motion_decomp),
@@ -614,35 +651,114 @@ def decompose_full_mt(
     rawnav,
     stop_ff
 ):
-
+    
     # TODO:
     # set the assertions
 
-    rawnav_decompose = (
+    # CALCULATE DELAY AT STOPS
+    rawnav_basic_decompose = (
         rawnav
-        .group_by(['filename','index_run_start','stop_window_area','high_level_decomp'])
+        # TODO: NA values in stop_window area are dropped in aggregation,
+        # so we will need to do something different there
+        .groupby(['filename','index_run_start','trip_seg','basic_decomp'])
         .agg(
-            {
-                'secs_past_st' : [lambda x: max(x) - min(x)],
-                'odom_ft' : [lambda x: max(x) - min(x)]
-            }
-        )
-        .pipe(ll.reset_col_names)
-        .rename(
-            columns = 
-                {
-                    'odom_ft_<lambda>': 'odom_ft_total',
-                    'sec_past_st_<lambda>':'t_segment_total'
-                }
-        )
+            secs_tot  = ('secs_marg','sum'),
+            odom_ft_tot = ('odom_ft_marg','sum')
+            )
+        .reset_index() 
     )
+    
+    # TODO: should double check that the freeflow table
+    # we pass in is filtered to max or whatever
+    # or maybe that happens outside function, i dunno
 
-    rawnav_decompose_ff = (
-        rawnav_decompose
+    rawnav_stop_delay = (
+        rawnav_basic_decompose
+        .query('basic_decomp == "Non-Passenger"')
         # join in the freeflow speeds
         .merge(
             stop_ff,
-            left_on = ['stop_window_area'],
+            how = 'left',
+            left_on = ['trip_seg'],
             right_on = ['stop_window_area']
         )
+        # TODO: probably shouldn't save the mph values, but rather fps
+        .assign(
+            Freeflow = lambda x: x.odom_ft_tot / (x.mph * 1.467),
+            Delay = lambda x: x.secs_tot - x.Freeflow
+        )
+        .filter(
+            items = [
+                'filename',
+                'index_run_start',
+                'trip_seg',
+                'basic_decomp',
+                'Freeflow',
+                'Delay'
+            ],
+            axis = 'columns'
+        )
+        .melt(
+            id_vars = [
+                                'filename',
+                'index_run_start',
+                'trip_seg',
+                'basic_decomp'
+                ],
+            value_vars = ['Freeflow','Delay'],
+            var_name = "np_decomp",
+            value_name = "secs_tot"
+        )
     )
+    
+    # TODO: how am i still getting negative delay secs 
+    # in a few cases? i think it's because i didn't remvoe pax delay when calculating
+    # freeflow times. need to go back and fix
+    
+    # TODO: not sure what the final aggregation should be; i think it should come as the whole
+    # run, but with stop areas and non-stop areas consolidated
+    
+    # TODO: should calculate identifiers for non-stop area as stop-to-stop segs
+    
+    # CALCULATE RUN-LEVEL DELAY
+    rawnav_full_decompose = (
+        rawnav_basic_decompose
+        .merge(
+            rawnav_stop_delay,
+            how = "left",
+            on = [
+                'filename',
+                'index_run_start',
+                'trip_seg',
+                'basic_decomp'
+            ],
+            suffixes = ("","_np")
+        )
+        .assign(
+            secs_tot = lambda x: 
+                np.where(
+                    x.secs_tot_np.notnull(),
+                    x.secs_tot_np,
+                    x.secs_tot
+                ),
+            decomposition = lambda x:
+                np.where(
+                    x.basic_decomp != "Non-Passenger",
+                    x.basic_decomp,
+                    x.np_decomp
+                )
+        )
+        .drop(
+            # we drop odom_ft_tot here, because it's now repeated for 
+            # non passenger items
+            ['secs_tot_np','np_decomp','odom_ft_tot'],
+            axis = "columns"
+        )
+    )
+    
+    return(rawnav_full_decompose)
+    
+    
+    
+    
+    
