@@ -138,13 +138,24 @@ def assign_stop_area(
             ]
         )
     )
-        
-    rawnav_segs = (
+
+    rawnav_segs = rawnav
+    
+    rawnav_segs['stop_window_forw'] = (
         rawnav
-        .assign(
-            stop_window_forw = lambda x: x.stop_window_area.ffill(),
-            stop_window_back = lambda x: x.stop_window_area.bfill()
+        .groupby(['filename','index_run_start'])['stop_window_area']
+        .transform(lambda x: x.ffill())
+    )
+    
+    rawnav_segs['stop_window_back'] = (
+        rawnav
+        .groupby(['filename','index_run_start'])['stop_window_area']
+        .transform(lambda x: x.bfill()
         )
+    )
+    
+    rawnav_segs = (
+        rawnav_segs
         .assign(
             stop_seg = lambda x:
                 np.select(
