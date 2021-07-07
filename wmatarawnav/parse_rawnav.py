@@ -11,7 +11,7 @@ from zipfile import BadZipfile
 import fiona
 import geopandas as gpd
 from shapely.geometry import Point
-from pandas.io.parsers import ParserError
+# from pandas.io.parsers import ParserError
 
 # FIXME : Change all functions below to snake_case---refactor code
 # Parent Functions
@@ -168,11 +168,14 @@ def load_rawnav_data(zip_folder_path, skiprows):
     zip_file_name = namepat.search(zip_folder_path).group(1)
     try:
         raw_data = pd.read_csv(zf.open(zip_file_name), skiprows=skiprows, header=None)
-    except ParserError as parseerr:
-        print("*" * 100)
-        print("More number of ',' in a file {}. pandas has issue with tokenizing data. Error: {}".format(zip_file_name,parseerr))
-        print("*" * 100)
+    except:
+        print("parse error in load_rawnav_data")
         raw_data = None
+    # except ParserError as parseerr:
+    #     print("*" * 100)
+    #     print("More number of ',' in a file {}. pandas has issue with tokenizing data. Error: {}".format(zip_file_name,parseerr))
+    #     print("*" * 100)
+    #     raw_data = None
     return raw_data
 
 
