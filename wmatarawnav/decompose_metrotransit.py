@@ -15,10 +15,7 @@ def assign_stop_area(
     upstream_ft = 150,
     downstream_ft = 150
 ):
-    # TODO: consider adding a sequential numbering for the parts that aren't in a stop window.
     # TODO: assert that stop_field exists
-
-    # TODO: break this down into more subfunctions so we can show the intermediate results more
     # clealry, test, etc.
     #  IDENTIFY STOP WINDOWS
     # Identify the start and end of stop windows

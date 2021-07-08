@@ -8,10 +8,8 @@ Created on Wed Jun 16 2021
 import os, sys, pandas as pd, pyarrow.parquet as pq
 
 # For postgresql
-# TODO: for now, skipping, as amit says it's a bit slow
+# TODO: for now, skipping server, as amit says it's a bit slow
 from dotenv import dotenv_values
-# import pg8000.native # not strictly required to load, but is used by sqlalchemy below
-# import sqlalchemy
 import pyarrow as pa
 
 if os.getlogin() == "WylieTimmerman":
@@ -26,26 +24,16 @@ if os.getlogin() == "WylieTimmerman":
     path_processed_data = os.path.join(path_sp, "data","02-Processed")
     # Server credentials
     config = dotenv_values(os.path.join(path_working, '.env'))
-    # other things for wylie's dev environment        
-    # from IPython import get_ipython  
-    
-    # ipython.magic("reset -f")
-    # ipython = get_ipython()
-    # ipython.magic("load_ext autoreload")
-    # ipython.magic("autoreload 2")
-    
+    # other things for wylie's dev environment            
 
 # Globals
 tsp_route_list = ['30N','30S','33','31']
-analysis_routes = tsp_route_list
+analysis_routes = ['30N']
 analysis_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 # EPSG code for WMATA-area work
 wmata_crs = 2248
 
 import wmatarawnav as wr
-
-# Connect to postgres
-# TODO: for now, i'm going to skip postgres work, as amit says it's a bit slow
 
 # % Reload Data
 # %% Rawnav Data
@@ -53,9 +41,9 @@ rawnav_raw = pd.DataFrame()
 
 for yr in [
     '202102',
-    '202103',
-    '202104',
-    '202105'
+    # '202103',
+    # '202104',
+    # '202105'
 ]:
     rawnav_raw_temp = (
         wr.read_cleaned_rawnav(
@@ -87,7 +75,7 @@ for yr in [
 
     rawnav_raw = rawnav_raw.append(rawnav_raw_temp, ignore_index = True)
 
-del rawnav_raw_temp # i'm not sure why this doesn't always delete
+del rawnav_raw_temp 
 
 # %% stop index data
 stop_index = (
@@ -141,6 +129,7 @@ rawnav_fil = (
     rawnav_raw
     .merge(
         stop_index
+        # TODO: join on index_loc as well
         .filter(items = ['filename','index_run_start','odom_ft_stop','stop_id']),
         left_on = ['filename','index_run_start','odom_ft'],
         right_on = ['filename','index_run_start','odom_ft_stop'],
@@ -172,14 +161,26 @@ rawnav_window = (
     )
 )
 
-del rawnav_fil
+# del rawnav_fil
 
 # %% Run the basic decomposition
-rawnav_window_basic = (
-    wr.decompose_basic_mt(
-        rawnav_window
+rawnav_window_basic = pd.DataFrame()
+
+for rt in analysis_routes:
+    print(rt)
+    rawnav_window_rt = rawnav_window.query('route == @rt')
+    
+    rawnav_window_basic_temp = (
+        wr.decompose_basic_mt(
+            rawnav_window_rt
+        )
     )
-)
+    
+    rawnav_window_basic = pd.concat([rawnav_window_basic,rawnav_window_basic_temp])
+    
+# del rawnav_window_basic
+# del rawnav_window
+    
 
 # %% Calculate the stop-level free-flow times
 # We need to wait to do this until after the passenger and non-passenger delay are separated
