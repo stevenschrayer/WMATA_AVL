@@ -13,7 +13,6 @@ from dotenv import dotenv_values
 # import pg8000.native # not strictly required to load, but is used by sqlalchemy below
 # import sqlalchemy
 import pyarrow as pa
-import pyarrow.parquet as pq
 
 if os.getlogin() == "WylieTimmerman":
     # Working Paths
@@ -28,13 +27,12 @@ if os.getlogin() == "WylieTimmerman":
     # Server credentials
     config = dotenv_values(os.path.join(path_working, '.env'))
     # other things for wylie's dev environment        
-    from IPython import get_ipython  
+    # from IPython import get_ipython  
     
-    ipython = get_ipython()
-    ipython.magic("reset -f")
-    ipython = get_ipython()
-    ipython.magic("load_ext autoreload")
-    ipython.magic("autoreload 2")
+    # ipython.magic("reset -f")
+    # ipython = get_ipython()
+    # ipython.magic("load_ext autoreload")
+    # ipython.magic("autoreload 2")
     
 
 # Globals

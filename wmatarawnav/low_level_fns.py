@@ -174,7 +174,7 @@ def reset_col_names(df):
     to continuing to do work on a dataframe. This addresses that.
     """
     
-    df.columns = ["_".join(x) for x in df.columns.ravel()]
+    df.columns = ["_".join(x) for x in np.asarray(df.columns).ravel()]
     df = df.reset_index()
     df.columns = df.columns.str.replace(pat = "_$",repl = "", regex = True)
     return(df)
