@@ -150,6 +150,8 @@ rawnav_fil = (
     )
 )
 
+del rawnav_raw
+
 # %% Run the basic decomposition
 
 # just testing out the two approaches
@@ -179,6 +181,8 @@ rawnav_ff_window_mt = (
         method = "mt"
     )
 )
+
+del rawnav_fil
 
 # %% Run the basic decomposition
 rawnav_window_basic = (
