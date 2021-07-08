@@ -68,6 +68,23 @@ for yr in [
                 ("rawnav_data_" + yr + ".parquet")
             )
         )
+        .drop(
+            [
+                "lat",
+                "long",
+                "heading",
+                "sat_cnt",
+                "blank",
+                "lat_raw",
+                "long_raw",
+                "index_run_end",
+                "wday",
+                "veh_state",
+                "pattern",
+                "start_date_time"
+            ],
+            axis = "columns"
+        )
     )
 
     rawnav_raw = rawnav_raw.append(rawnav_raw_temp, ignore_index = True)
