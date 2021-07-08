@@ -611,7 +611,13 @@ def decompose_basic_mt(
                         "Passenger",
                         "Non-Passenger"
                     ],
-                    default = "you shouldnt see this"
+                    # because we don't have 3 pings to look ahead over,
+                    # we get NA speed values at the end. The vehicle could be in motion,
+                    # could be stopped, or whatever. We might think about just filling forward
+                    # the preceeding values, but this might extent stop windows longer than we want
+                    # or otherwise be wrong. I think we just filter this out before analysis
+                    # rather than trying to do something more careful here.
+                    default = "End of Trip Pings"
                 )
         )   
     )
