@@ -84,6 +84,15 @@ def assign_stop_area(
         )
         .drop(columns = ['odom_ft_max','odom_ft'])
     )
+        
+    # let's also add stop sequences so we can filter out weirdness around first and last
+    # stop. Note that we're indexing on 0, which keeps us consistent with rawnav indicators too
+    
+    rawnav_stop_window_ind['trip_stop_sequence'] = (
+        rawnav_stop_window_ind
+        .groupby(['filename','index_run_start'])
+        .cumcount() 
+    )
 
     # note: i think the biggest to-do is to drop cases with repeated stops or 
     # overlapping categories 
@@ -98,14 +107,13 @@ def assign_stop_area(
     # i had too many intermediate objects, so i went back to overwriting the same object
     # each time. It ended up not being the kind of memory error i thought, so this
     # ends up being unneccessary. Anyhow, apologies in advance if you're debugging.
-    
     rawnav = (
         rawnav
         .sort_values(by = ["odom_ft",'index_loc'])
         .pipe(
             pd.merge_asof,
             right = (
-                rawnav_stop_window_ind
+                rawnav_stop_window_ind.drop(['trip_stop_sequence'],axis = 'columns')
                 .sort_values(by = "stop_window_start")
                 .drop(columns = ['stop_window_end'])
             ),
@@ -119,7 +127,7 @@ def assign_stop_area(
         .pipe(
             pd.merge_asof,
             right = (
-                rawnav_stop_window_ind
+                rawnav_stop_window_ind.drop(['trip_stop_sequence'],axis = 'columns')
                 .sort_values(by = "stop_window_end")
                 .drop(columns = ['stop_window_start'])
             ),
@@ -131,7 +139,7 @@ def assign_stop_area(
             )
         .sort_values(by = ['filename','index_run_start','index_loc'])
     )
-    
+
     rawnav = (
         rawnav
         .assign(
@@ -153,24 +161,40 @@ def assign_stop_area(
             ]
         )
     )
-
-    rawnav_segs = rawnav
+        
+    # ADD STOP SEQUENCE IDENTIFIER
+    # We join this separately, as we just want to identify any areas that are in first stop or
+    # last, basically
+    # Feels a little weird to join this to the stop window area and not the particular 
+    # nearest point, but i think it'll be a little cleaner downstream
+    rawnav = (
+        rawnav
+        .merge(
+            rawnav_stop_window_ind
+            .filter(['filename','index_run_start','stop_window','trip_stop_sequence'])
+            .rename(columns = {"stop_window" : "stop_window_area"}),
+            on = ['filename','index_run_start','stop_window_area'],
+            how = "left"
+        )
+    )
+        
+    # CREATE SEGMENTS
     
-    rawnav_segs['stop_window_forw'] = (
+    rawnav['stop_window_forw'] = (
         rawnav
         .groupby(['filename','index_run_start'])['stop_window_area']
         .transform(lambda x: x.ffill())
     )
     
-    rawnav_segs['stop_window_back'] = (
+    rawnav['stop_window_back'] = (
         rawnav
         .groupby(['filename','index_run_start'])['stop_window_area']
         .transform(lambda x: x.bfill()
         )
     )
-    
-    rawnav_segs = (
-        rawnav_segs
+
+    rawnav = (
+        rawnav
         .assign(
             stop_seg = lambda x:
                 np.select(
@@ -202,7 +226,7 @@ def assign_stop_area(
         )
     )
         
-    return(rawnav_segs)
+    return(rawnav)
 
 def decompose_basic_mt(
     rawnav,
@@ -570,7 +594,7 @@ def decompose_basic_mt(
             on = ['filename','index_run_start','index_loc']
         )
     )
-    
+
     rawnav = (
         rawnav
         .assign(
