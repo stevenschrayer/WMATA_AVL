@@ -797,7 +797,7 @@ def decompose_full_mt(
                     x.secs_tot_np,
                     x.secs_tot
                 ),
-            decomposition = lambda x:
+            full_decomp = lambda x:
                 np.where(
                     x.basic_decomp != "Non-Passenger",
                     x.basic_decomp,
@@ -810,6 +810,7 @@ def decompose_full_mt(
             ['secs_tot_np','np_decomp','odom_ft_tot'],
             axis = "columns"
         )
+        # TODO: rearrange cols here to be a bit better
     )
     
     return(rawnav_full_decompose)
