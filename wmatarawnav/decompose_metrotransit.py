@@ -30,19 +30,34 @@ def assign_stop_area(
         rawnav_stop = rawnav[rawnav.stop_window.str.contains("^E")]
     else:
         rawnav_stop = rawnav[rawnav[stop_field].notnull()]
+        
+        rawnav_stop = (
+            rawnav_stop
+            # NOTE: this will get 'area_start' appendeded later so it won't
+            # conflict with the actual stop_window. I think the naming is kind of 
+            # unfortunate in that it seems like it's related to the rawnav stop
+            # window indicators but could [actually be stop related
+            .drop(['stop_window'], axis = 'columns')
+            .rename(columns = {"stop_id":"stop_window"})
+            .assign(
+                stop_window = lambda x: x.stop_window.astype(int).astype(str)
+            )
+        )     
 
     rawnav_stop_window_ind = (
         rawnav_stop
-        .filter(['filename','index_run_start',stop_field,'odom_ft'])
+        .filter(['filename','index_run_start','stop_window','odom_ft'])
         .assign(
             stop_window_start = lambda x, upft = upstream_ft: x.odom_ft - upft,
             stop_window_end = lambda x, dnft = downstream_ft: x.odom_ft + dnft
         )
     )
     
-    # TODO: is there a way to keep this in the method chain above? 
+    # if our window goes negative, just reset to zero
+    # TODO: is there a way to keep this in the method chain above?
     rawnav_stop_window_ind.loc[rawnav_stop_window_ind['stop_window_start'] < 0, 'stop_window_start'] = 0
     
+    # if our window goes past, set to max
     rawnav_stop_window_max = (
         rawnav
         .groupby(['filename','index_run_start'])
