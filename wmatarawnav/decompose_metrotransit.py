@@ -627,7 +627,7 @@ def decompose_basic_mt(
 def get_stop_ff(
     rawnav,
     method = "mt",
-    use_ntile = 0.95
+    use_ntile = "mph_p95"
 ):
         # assert method.isin(['mt','ntile','all'])
         # if method = ntile, then make sure use_ntile is non-nul
@@ -636,16 +636,16 @@ def get_stop_ff(
 
     run_stop_area_speed = (
         rawnav
+        .query('basic_decomp == "Non-Passenger"')
         .groupby(['filename','index_run_start','stop_window_area'])
         .agg({
-            "odom_ft" : ['min','max'],
-            "sec_past_st" : ['min','max']
+            "odom_ft_marg" : ['sum'],
+            "secs_marg" : ['sum']
         })
         .pipe(ll.reset_col_names)
         .assign(
             stop_window_fps = lambda x: 
-                (x.odom_ft_max - x.odom_ft_min) / 
-                    (x.sec_past_st_max - x.sec_past_st_min)
+                (x.odom_ft_marg_sum / x.secs_marg_sum)
         )
     )
 

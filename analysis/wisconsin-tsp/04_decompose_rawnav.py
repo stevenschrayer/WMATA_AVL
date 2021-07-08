@@ -155,30 +155,22 @@ del rawnav_raw
 # %% Run the basic decomposition
 
 # just testing out the two approaches
-rawnav_window = (
-    wr.assign_stop_area(
-        rawnav_fil,
-        stop_field = "stop_window",
-        upstream_ft = 150,
-        downstream_ft = 150
-    )
-)
-
-# Until the stops data gets a little better, we are leaving this as NA
-# rawnav_wstops = (
+# rawnav_window = (
 #     wr.assign_stop_area(
 #         rawnav_fil,
-#         stop_field = "stop_id",
+#         stop_field = "stop_window",
 #         upstream_ft = 150,
 #         downstream_ft = 150
 #     )
 # )
 
-# %% Calculate the stop-level free-flow times
-rawnav_ff_window_mt = (
-    wr.get_stop_ff(
-        rawnav_window,
-        method = "mt"
+# Until the stops data gets a little better, we are leaving this as NA
+rawnav_window = (
+    wr.assign_stop_area(
+        rawnav_fil,
+        stop_field = "stop_id",
+        upstream_ft = 150,
+        downstream_ft = 150
     )
 )
 
@@ -191,13 +183,30 @@ rawnav_window_basic = (
     )
 )
 
+# %% Calculate the stop-level free-flow times
+# We need to wait to do this until after the passenger and non-passenger delay are separated
+
+rawnav_ff_window_all = (
+    wr.get_stop_ff(
+        rawnav_window_basic,
+        method = "all"
+    )
+)
+
+rawnav_ff_window_all.to_csv('rawnav_ff_window_all.csv')
+
+rawnav_ff_window_95 = (
+    rawnav_ff_window_all
+     .loc[rawnav_ff_window_all['ntile'] == "mph_p95",]
+)
+
 # %% Summarize each run
 # Because we're now differencing out delay and free-flow time, we have to aggregate above 
 # individual rawnav records
 rawnav_run_decomp = (
     wr.decompose_full_mt(
         rawnav_window_basic,
-        rawnav_ff_window_mt
+        rawnav_ff_window_95
     )
 )
 
