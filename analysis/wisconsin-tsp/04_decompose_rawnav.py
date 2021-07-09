@@ -28,7 +28,7 @@ if os.getlogin() == "WylieTimmerman":
 
 # Globals
 tsp_route_list = ['30N','30S','33','31']
-analysis_routes = ['30N']
+analysis_routes = tsp_route_list
 analysis_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 # EPSG code for WMATA-area work
 wmata_crs = 2248
@@ -41,9 +41,9 @@ rawnav_raw = pd.DataFrame()
 
 for yr in [
     '202102',
-    # '202103',
-    # '202104',
-    # '202105'
+    '202103',
+    '202104',
+    '202105'
 ]:
     rawnav_raw_temp = (
         wr.read_cleaned_rawnav(
@@ -100,18 +100,19 @@ stop_index = (
 )
 
 stop_summary = (
-    pq.read_table(source=os.path.join(path_processed_data,"stop_summary.parquet"),
-                    # columns = [ 'route',
-                    #             'pattern',
-                    #             'direction', #same as pattern_name_wmata_schedule
-                    #             'stop_id',
-                    #             'filename',
-                    #             'index_run_start',
-                    #             'index_loc',
-                    #             'odom_ft',
-                    #             'sec_past_st',
-                    #             'geo_description'],
-                    use_pandas_metadata = True
+    pq.read_table(
+        source = os.path.join(path_processed_data,"stop_summary.parquet"),
+        columns = [
+            'filename',
+            'index_run_start',
+            'direction_wmata_schedule',
+            'pattern_destination_wmata_schedule',
+            'route',
+            'pattern',
+            'start_date_time',
+            'end_date_time'
+        ],
+        use_pandas_metadata = True
     )
     .to_pandas()
     # As a bit of proofing, we confirm this is int32 and not string, may remove later
@@ -125,33 +126,31 @@ stop_summary = (
 # (sometimes odom reading will repeat), some stops will show up twice. I think this is okay 
 # for the calculations that follow.
 
-rawnav_fil = (
-    rawnav_raw
-    .merge(
-        stop_index
-        # TODO: join on index_loc as well
-        .filter(items = ['filename','index_run_start','odom_ft_stop','stop_id']),
-        left_on = ['filename','index_run_start','odom_ft'],
-        right_on = ['filename','index_run_start','odom_ft_stop'],
-        how = "left"
-    )
-)
+rawnav_fil = pd.DataFrame()
 
+for rt in analysis_routes:
+    print(rt)
+    rawnav_rt = rawnav_raw.query('route == @rt')
+    
+    rawnav_fil_rt = (
+        rawnav_rt
+        .merge(
+            stop_index
+            # TODO: join on index_loc as well
+            .filter(items = ['filename','index_run_start','odom_ft_stop','stop_id']),
+            left_on = ['filename','index_run_start','odom_ft'],
+            right_on = ['filename','index_run_start','odom_ft_stop'],
+            how = "left"
+        )
+    )
+    
+    rawnav_fil = pd.concat([rawnav_fil,rawnav_fil_rt])
+    
 del rawnav_raw
+del rawnav_rt
 
 # %% Run the basic decomposition
 
-# just testing out the two approaches
-# rawnav_window = (
-#     wr.assign_stop_area(
-#         rawnav_fil,
-#         stop_field = "stop_window",
-#         upstream_ft = 150,
-#         downstream_ft = 150
-#     )
-# )
-
-# Until the stops data gets a little better, we are leaving this as NA
 rawnav_window = (
     wr.assign_stop_area(
         rawnav_fil,
@@ -161,7 +160,7 @@ rawnav_window = (
     )
 )
 
-# del rawnav_fil
+del rawnav_fil
 
 # %% Run the basic decomposition
 rawnav_window_basic = pd.DataFrame()
@@ -178,8 +177,9 @@ for rt in analysis_routes:
     
     rawnav_window_basic = pd.concat([rawnav_window_basic,rawnav_window_basic_temp])
     
-# del rawnav_window_basic
-# del rawnav_window
+del rawnav_window
+del rawnav_window_basic_temp
+del rawnav_window_rt
     
 
 # %% Calculate the stop-level free-flow times
@@ -218,7 +218,7 @@ rawnav_run_info =(
         'pattern_destination_wmata_schedule',
         'route',
         'start_date_time',
-        'start_end_time'
+        'end_date_time'
         ],
        axis = 'columns'
     )
