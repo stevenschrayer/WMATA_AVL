@@ -44,3 +44,74 @@ rawnav_run_decomp = (
     .loc[(rawnav_run_decomp.start_date_time.dt.tz_localize(None) < np.datetime64('2021-04-30'))]
 
 )
+
+# do the time
+rawnav_run_decomp_2 = (
+    rawnav_run_decomp
+    .assign(
+        has_tsp = lambda x: x.route.isin(['30N','30S','33']),
+        tsp_period = lambda x: 
+            np.where(
+                rawnav_run_decomp.start_date_time.dt.tz_localize(None) < np.datetime64('2021-03-15'),
+                "pre_tsp",
+                "post_tsp"
+            ),
+        dow = lambda x: x.start_date_time.dt.dayofweek,
+        service_day = lambda x: 
+            np.select(
+                [
+                    x.dow.isin([0,1,2,3,4]),
+                    x.dow.eq(5),
+                    x.dow.eq(6)
+                ],
+                [
+                    'Weekday',
+                    'Saturday',
+                    'Sunday'
+                ]
+            ), 
+        trip_hour = lambda x: x.start_date_time.dt.hour,
+        # TODO: double check timestamps/timezone on conversion back from 
+        # numpy
+        time_period = lambda x: 
+            pd.cut(
+                x.trip_hour,
+                bins = pd.IntervalIndex.from_tuples(
+                    [
+                        (0,4),
+                        (4,6),
+                        (6,9),
+                        (9,15),
+                        (15,19),
+                        (19,23),
+                        (23,999)
+                    ]
+                ),
+                include_lowest=True, 
+                retbins = False
+            )
+            .astype("category")
+            .cat.rename_categories(
+                ['Late Night1',
+                'Early AM',
+                'AM Peak',
+                'Midday',
+                'PM Peak',
+                'Evening',
+                'Late Night2']
+            )
+    )
+)
+
+# confirmed we're not mucking up timezones by looking into these items in the source data
+test = (
+    rawnav_run_decomp_2 
+    .head(100000)
+    .filter(
+        ['filename','index_run_start','start_date_time','dow', 'trip_hour','time_period']
+    )
+    .drop_duplicates(
+        ['filename','index_run_start','start_date_time','dow', 'trip_hour','time_period']
+    )        
+)   
+    
