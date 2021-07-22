@@ -6,3 +6,4 @@ from .rawnav_read_write import *
 from .decompose_rawnav import *
 from .decompose_metrotransit import *
 from .visualize_decomposition import *
+from .decompose_movement import *
