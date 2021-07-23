@@ -200,8 +200,22 @@ def semi_join(left,right,on):
     to continuing to do work on a dataframe. This addresses that.
     """
     
+    # This was the old f'n but it was slow as heck
+    # out = (
+    #     left[left[on].agg(tuple,1).isin(right[on].agg(tuple,1))]
+    # )
+    
+    # This is the new approach
+    # does this actually return what i think? If the right has a larger universe of trips 
+    # or whatever, i'm worried it's that that will be returned.
     out = (
-        left[left[on].agg(tuple,1).isin(right[on].agg(tuple,1))]
+        left
+        .merge(
+            right,
+            how = 'inner',
+            on = on
+        )
+        .reindex(left.columns, axis = "columns")
     )
 
     return(out)
