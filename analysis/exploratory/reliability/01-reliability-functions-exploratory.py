@@ -8,12 +8,8 @@ Created on Thu Jul 22 2021
 # %% Import libraries
 
 # Libraries
-import os, sys, pandas as pd, geopandas as gpd
+import os, sys, pandas as pd
 from dotenv import dotenv_values
-import pyarrow as pa
-import pyarrow.parquet as pq
-import datetime as dt
-import numpy as np
 
 
 # %% Set paths
@@ -39,9 +35,12 @@ import wmatarawnav as wr
 # %% Read in decomposed rawnav data for Wisconsin Ave corridor
 
 # Only read in data of complete trips
-rawnav_run_decomp_2_wisc = pd.read_csv("rawnav_run_decomp_2_wisc.csv")
-
-rawnav_run_decomp_2_wisc['route'] = rawnav_run_decomp_2_wisc['route'].astype(str)
+rawnav_run_decomp_2_wisc = pd.read_csv(os.path.join(path_sp,
+                                                    "data",
+                                                    "01-interim",
+                                                    "rawnav_run_decomp_2_wisc.csv"),
+    dtype = {'route': str}
+    )
 
 # %% Filter data
 
