@@ -477,28 +477,33 @@ def decompose_movement(
 
 def interp_sec(x, bump = 0.999):
     assert (bump >0 ) & (bump < 1)
+        
+    x.set_index(['odom_ft_ts'], inplace = True)  
     
     if (x.index.duplicated().any()):
         # this is where you have duplicate odom and sec_past_st values
         # these will get a speed of 0/0
         # this probably means the approach isn't feasible
+        x.reset_index(drop = True, inplace = True)
         return(x)
-    
-    elif (len(x) == 1):
+    elif (len(x.sec_past_st_copy) == 1):
+        x.reset_index(drop = True, inplace = True)
+        return(x)
+    elif (len(x.sec_past_st_copy) == 2):
+        x.sec_past_st_copy.iloc[-1] = x.sec_past_st_copy.iloc[0] + bump
         return(x)
     else:
         # set everything after start to nan; should only apply when grouped anyway,
         # so the first observation is all we need
-        x.iloc[1:] = np.nan
+        
+        x.sec_past_st_copy.iloc[1:] = np.nan
         
         # replace last; in case we set to nan in last step, we use the first observation
-        x.iloc[-1] = x.iloc[0] + bump
+        x.sec_past_st_copy.iloc[-1] = x.sec_past_st_copy.iloc[0] + bump
         
-        if (x.index.duplicated().any()):
-            breakpoint()
+        x.sec_past_st_copy = x.sec_past_st_copy.interpolate(method = "index")
         
-        x = x.interpolate(method = "index")
-    
+        x.reset_index(drop = True, inplace = True)
         return(x)
 
 def calc_rolling_vals2(rawnav,
@@ -563,22 +568,22 @@ def calc_rolling_vals2(rawnav,
                 # pandas only lets you interpolate over repeated vals when this is 
                 # datetime, so we do it this way.
                 odom_ft_ts = lambda x: pd.to_datetime(x.odom_ft)
-            )
-            .set_index(['odom_ft_ts'])    
+            )  
         )
-        
-        rawnav_dupe['sec_past_st_alt'] = (
+
+        rawnav_dupe = (
             rawnav_dupe
             # .query('sec_past_st == 3251')
-            .groupby((['filename','index_run_start','sec_past_st']))['sec_past_st_copy']
+            .groupby((['filename','index_run_start','sec_past_st']))
             .apply(lambda x: interp_sec(x, bump = 0.999))
+            .reset_index(drop = True)
         )
-        
+
         rawnav_dupe = ( 
             rawnav_dupe
-            .drop(['sec_past_st','sec_past_st_copy'], axis = 'columns')
+            .drop(['sec_past_st'], axis = 'columns')
             .rename(
-                {"sec_past_st_alt" : "sec_past_st"},
+                {"sec_past_st_copy" : "sec_past_st"},
                 axis = "columns"
             )
         )
@@ -786,6 +791,12 @@ def calc_rolling_vals2(rawnav,
     # np.nan
     rawnav_add.loc[rawnav_add.groupby(['filename','index_run_start']).tail(1).index, 'accel_next'] = np.nan
     
+    # drop some leftover cols
+    
+    rawnav_add = (
+        rawnav_add
+        .drop(['sec_past_st_lag','fps_lag'], axis = "columns")
+        )
     
     return(rawnav_add)
     
