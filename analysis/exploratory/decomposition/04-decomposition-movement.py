@@ -96,7 +96,7 @@ rawnav_fil2 = (
 
 rawnav_fil3 = wr.reset_odom(rawnav_fil2)
 
-rawnav_fil4 = wr.calc_rolling_vals2(rawnav_fil3)
+rawnav_fil4 = wr.calc_rolling_vals2(rawnav_fil3, method = "spline")
 
 # rawnav_mov = (
 #     wr.decompose_mov(rawnav_fil3)

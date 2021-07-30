@@ -474,8 +474,35 @@ def decompose_movement(
         
     return(rawnav)
     
+
+def interp_sec(x, bump = 0.999):
+    assert (bump >0 ) & (bump < 1)
+    
+    if (x.index.duplicated().any()):
+        # this is where you have duplicate odom and sec_past_st values
+        # these will get a speed of 0/0
+        # this probably means the approach isn't feasible
+        return(x)
+    
+    elif (len(x) == 1):
+        return(x)
+    else:
+        # set everything after start to nan; should only apply when grouped anyway,
+        # so the first observation is all we need
+        x.iloc[1:] = np.nan
+        
+        # replace last; in case we set to nan in last step, we use the first observation
+        x.iloc[-1] = x.iloc[0] + bump
+        
+        if (x.index.duplicated().any()):
+            breakpoint()
+        
+        x = x.interpolate(method = "index")
+    
+        return(x)
+
 def calc_rolling_vals2(rawnav,
-                      groupvars = ['filename','index_run_start']):
+                       method = 'spline'):
     """
     Parameters
     ----------
@@ -495,26 +522,113 @@ def calc_rolling_vals2(rawnav,
     can be appropriate to group by run and stop.
     """
     
-    # this will cause us to lose some stop windows, but those don't tend to be that useful
-    # so we'll just live with it. to avoid losing door_state, which is useful, we'll
-    # keep situations where sec_past_st is repeated there. Some of the cleanup code 
-    # below should still be useful in such situations
+    # Grouping everything is pretty slow, so we'll split out the repeated second cases, agg them,
+    # then recombine
     rawnav = (
         rawnav
-        .drop_duplicates(subset = (groupvars + ['sec_past_st','door_state']), keep = 'last')
+        .assign(
+            dupes = lambda x:
+                x.duplicated(
+                    subset = ['filename','index_run_start','door_state','sec_past_st'],
+                    keep = False
+                ),
+            stop_window_x = lambda x:
+                np.where(
+                    x.stop_window.eq('X-1'),
+                    'X-1',
+                    None # None might be better, but later we'll end up creating blanks anyway.
+                ),
+            stop_window_e = lambda x:
+                np.where(
+                    x.stop_window.str.contains('E'),
+                    x.stop_window,
+                    None
+                )
+        )
     )
-       
-    # so this does a lil error
-    # rawnav[['odom_ft_next','sec_past_st_next']] = (
-    #     rawnav
-    #     .groupby(groupvars, sort = False)[['odom_ft','sec_past_st']]
-    #     .shift(-1)
-    # )
+
+    rawnav_nodupe = (
+        rawnav.loc[rawnav.dupes == False]
+    )
+        
+    # these are methods for handling dupes
+    if (method == "spline"):
+        # TODO: right now, this doesn't quite work. still geting duplicate index warnings.
+        rawnav_dupe = (
+            rawnav 
+            .loc[rawnav.dupes == True]
+            # .query('(filename == "rawnav07231210220.txt") & (index_run_start == 9877)')
+            .assign(
+                sec_past_st_copy = lambda x: pd.to_numeric(x.sec_past_st),
+                # pandas only lets you interpolate over repeated vals when this is 
+                # datetime, so we do it this way.
+                odom_ft_ts = lambda x: pd.to_datetime(x.odom_ft)
+            )
+            .set_index(['odom_ft_ts'])    
+        )
+        
+        rawnav_dupe['sec_past_st_alt'] = (
+            rawnav_dupe
+            # .query('sec_past_st == 3251')
+            .groupby((['filename','index_run_start','sec_past_st']))['sec_past_st_copy']
+            .apply(lambda x: interp_sec(x, bump = 0.999))
+        )
+        
+        rawnav_dupe = ( 
+            rawnav_dupe
+            .drop(['sec_past_st','sec_past_st_copy'], axis = 'columns')
+            .rename(
+                {"sec_past_st_alt" : "sec_past_st"},
+                axis = "columns"
+            )
+        )
+    else:
+        print('nah')
+
+    # recombine duplicated and non-duplicated
+    rawnav = (
+        pd.concat([
+            rawnav_dupe,
+            rawnav_nodupe
+        ])
+        .sort_values(
+            by = ['filename','index_run_start','index_loc']    
+        )
+        .drop(
+            ['dupes','stop_window'],
+            axis = "columns"
+        )
+        .pipe(
+            # Should have done this sooner, but definitely necessary after these aggregations
+            ll.reorder_first_cols,
+            ['filename',
+             'index_run_start',
+             'route_pattern',
+             'pattern',
+             'index_run_end',
+             'route',
+             'wday',
+             'start_date_time',
+             'index_loc',
+             'odom_ft',
+             'sec_past_st',
+             'heading',
+             'door_state',
+             'veh_state',
+             'stop_window_e',
+             'stop_window_x',
+             'row_before_apc',
+             'lat',
+             'long',
+             'lat_raw',
+             'long_raw']
+        )
+    )
 
     # sometimes the above returns that .loc view/copy warning? i'm not sure
     rawnav[['odom_ft_next','sec_past_st_next']] = (
         rawnav
-        .groupby(groupvars, sort = False)[['odom_ft','sec_past_st']]
+        .groupby(['filename','index_run_start'], sort = False)[['odom_ft','sec_past_st']]
         .transform(lambda x: x.shift(-1))
     )
 
@@ -522,7 +636,7 @@ def calc_rolling_vals2(rawnav,
     # We'll use a bigger lag for more stable values for free flow speed
     rawnav[['odom_ft_next3','sec_past_st_next3']] = (
         rawnav
-        .groupby(groupvars, sort = False)[['odom_ft','sec_past_st']]
+        .groupby(['filename','index_run_start'], sort = False)[['odom_ft','sec_past_st']]
         .transform(lambda x: x.shift(-3))
     )
     
@@ -558,47 +672,53 @@ def calc_rolling_vals2(rawnav,
     # sec_past_st, for now we'll just fill the previous speed value forward 
     rawnav_add[['fps_next','fps_next3']] = (
         rawnav_add
-        .groupby(groupvars)[['fps_next','fps_next3']]
+        .groupby(['filename','index_run_start'])[['fps_next','fps_next3']]
         .transform(lambda x: x.ffill())
     )
     
     # but now, if you're the last row or last three rows, we reset you back to 
     # np.nan
-    rawnav_add.loc[rawnav_add.groupby(groupvars).tail(1).index, 'fps_next'] = np.nan
-    rawnav_add.loc[rawnav_add.groupby(groupvars).tail(3).index, 'fps_next3'] = np.nan
+    rawnav_add.loc[rawnav_add.groupby(['filename','index_run_start']).tail(1).index, 'fps_next'] = np.nan
+    rawnav_add.loc[rawnav_add.groupby(['filename','index_run_start']).tail(3).index, 'fps_next3'] = np.nan
     
     # calculate acceleration
-    rawnav_add[['fps_next_lead','fps_next3_lead']] = (
+    rawnav_add[['fps_lag','sec_past_st_lag']] = (
         rawnav_add
-        .groupby(groupvars, sort = False)[['fps_next', 'fps_next3']]
-        .transform(lambda x: x.shift(-1))
+        .groupby(['filename','index_run_start'], sort = False)[['fps_next', 'sec_past_st']]
+        .transform(lambda x: x.shift(1))
 
     )
+
+    # Parts of this could be a bit dicey, in a way. We get the acceleration at a point as the change 
+    # between the previous ping-to-ping segment (defined as fps_next in the last observation) and
+    # the current ping-to-ping segment (defined as fps_next in the current observation). This is
+    # therefore over three different pings, starting at sec_past_st in the previous observation
+    # and ending at sec_past_st_next for the current observation. Therefore we need some lagged
+    # values as well. This plots a bit better than the other alternatives that include an extra
+    # lead on fps_next.
     
+    # TODO: I should write the fps_next3 equivalent, but that gets kind of dicey anyway.
     rawnav_add = (
         rawnav_add 
         .assign(
-            accel_next = lambda x: (x.fps_next_lead - x.fps_next) / (x.sec_past_st_next - x.sec_past_st),
-            accel_next3 = lambda x: (x.fps_next3_lead - x.fps_next3) / (x.sec_past_st_next3 - x.sec_past_st)
+            accel_next = lambda x: (x.fps_next - x.fps_lag) / (x.sec_past_st_next - x.sec_past_st_lag),
         )
         # as before, we'll set these cases to nan and then fill
          .assign(
             accel_next = lambda x: x.accel_next.replace([np.Inf,-np.Inf],np.nan),
-            accel_next3 = lambda x: x.accel_next3.replace([np.Inf,-np.Inf],np.nan),
         )
     )
     
     # this is the point where I should've written another function
-    rawnav_add[['accel_next','accel_next3']] = (
+    rawnav_add[['accel_next']] = (
         rawnav_add
-        .groupby(groupvars)[['accel_next','accel_next3']]
+        .groupby(['filename','index_run_start'])[['accel_next']]
         .transform(lambda x: x.ffill())
     )
     
     # but now, if you're the last row or last three rows, we reset you back to 
     # np.nan
-    rawnav_add.loc[rawnav_add.groupby(groupvars).tail(1).index, 'accel_next'] = np.nan
-    rawnav_add.loc[rawnav_add.groupby(groupvars).tail(3).index, 'accel_next3'] = np.nan
+    rawnav_add.loc[rawnav_add.groupby(['filename','index_run_start']).tail(1).index, 'accel_next'] = np.nan
     
     
     return(rawnav_add)
