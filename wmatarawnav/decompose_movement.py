@@ -582,6 +582,72 @@ def calc_rolling_vals2(rawnav,
                 axis = "columns"
             )
         )
+        
+    elif (method == "agg"):
+    
+        # Even though we could try to pull out only the ones that have repeated values and perform
+        # the agg on them, seems a little safer as we get going to do for all and then optimize
+        # later.
+        rawnav_dupe = (
+            rawnav
+            .loc[rawnav.dupes == True]
+            # trick here is i'm not sure what columns we'll keep
+            .groupby(
+                [
+                    # these are the parts that don't vary by instance
+                    'filename',
+                    'index_run_start',
+                    'route_pattern',
+                    'pattern',
+                    'index_run_end',
+                    'route',
+                    'wday',
+                    'start_date_time',
+                    # this is the one that we actually care about
+                    'sec_past_st', 
+                    'door_state'
+                ],
+                as_index = False
+            )
+            .agg(
+                # some of these might be judgment calls about what to keep or chuck,
+                # anyway.
+                # TODO: come back and test to what extent we actually collapse things here.
+                index_loc = ('index_loc','max'),
+                lat = ('lat','last'),
+                long = ('long','last'),
+                heading = ('heading','last'),
+                # i'm hoping it's never the case that door changes on the same second
+                # if it does, will be in a world of pain.
+                # this join works better when we expect every row to be filled
+                veh_state = ('veh_state', lambda x: ','.join(x.unique().astype(str))),
+                odom_ft = ('odom_ft','max'),
+                sat_cnt = ('sat_cnt','last'),
+                # for stop_window, we are more likely to have blanks, so this works
+                stop_window_e = ('stop_window_e', lambda x: x.str.cat(sep=",",na_rep = None)),
+                stop_window_x = ('stop_window_x', lambda x: x.str.cat(sep=",",na_rep = None)),
+                blank = ('blank', lambda x: ','.join(x.unique().astype(int).astype(str))),
+                lat_raw = ('lat_raw','last'),
+                long_raw = ('long_raw','last'),
+                row_before_apc = ('row_before_apc', lambda x: ','.join(x.unique().astype(int).astype(str))),
+                collapsed_rows = ('index_loc','count')
+            )
+            .assign(
+                stop_window_e = lambda x: 
+                    np.where(
+                        x.stop_window_e.eq(''),
+                        None,
+                        x.stop_window_e
+                    ),
+                stop_window_x = lambda x: 
+                    np.where(
+                        x.stop_window_x.eq(''),
+                        None,
+                        x.stop_window_x
+                    )
+            )
+        )  
+
     else:
         print('nah')
 
