@@ -99,14 +99,14 @@ def rely_stats(rawnav_decomp,
     
 # %% Reliability by route-pattern
 
-grouping_route = ['route','overall_dir','tsp_period','basic_decomp','full_decomp']
+grouping_route = ['route','overall_dir','tsp_period','basic_decomp']
 
 rely_stats_wisc_route = rely_stats(rawnav_run_decomp_2_fil, grouping_route)
 
 
 # %% Reliability by stop segment
 
-grouping_stop_seg = ['route','overall_dir','trip_seg','tsp_period','basic_decomp','full_decomp']
+grouping_stop_seg = ['route','overall_dir','trip_seg','tsp_period','basic_decomp']
 
 rely_stats_wisc_stop = rely_stats(rawnav_run_decomp_2_fil, grouping_stop_seg)
 
