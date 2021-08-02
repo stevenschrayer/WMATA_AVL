@@ -1,10 +1,36 @@
+---
+title: "Explore Movement"
+output: html_notebook
+---
+
+# Setup
+```{r include=FALSE}
 library(tidyverse)
 library(sf)
 library(mapview)
 library(plotly)
 
+path_sp <- "C:/OD/Foursquare ITP/Projects - WMATA Datamart"
 
-# Functions ---------------------------------------------------------------
+path_data <-
+  file.path(
+    path_sp,
+    "Task 3 - Bus Priority",
+    "Data",
+    "01-Interim"
+  )
+
+```
+
+
+```{r}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+
+Define useful functions
+```{r}
 
 load_rawnav <- 
   function(thepath){
@@ -115,7 +141,7 @@ plot_rawnav <-
       
     
     # g
-    ggplotly(g)
+    ggplotly(g, dynamicTicks = TRUE)
   }
 
 plot_dots <-
@@ -142,49 +168,70 @@ plot_dots <-
       ylab("Trip Odometer Distance (Feet)") +
       theme_minimal() 
     # g
-    ggplotly(g)
+    ggplotly(g, dynamicTicks = TRUE)
   }
 
 
+```
 
-# Look at individual ones -------------------------------------------------
+# Explore cases
+
+## Original
+```{r}
 
 # Original
 rawnav1 <-
   load_rawnav(
-    "C:/Users/WylieTimmerman/Documents/projects_local/WMATA_AVL_datamart/test.csv"
+    file.path(path_data,"test.csv")
   ) %>%
   cleanup_things()
 
 plot_rawnav(rawnav1,accel_mph_next3)
+```
 
+## Minor Cleaning
+```{r}
 # With some cleaning
 rawnav1_reex <-
   load_rawnav(
-    "C:/Users/WylieTimmerman/Documents/projects_local/WMATA_AVL_datamart/test_reexport.csv"
+    file.path(path_data,"test_reexport.csv")
   ) %>%
   cleanup_things()
 
 plot_rawnav(rawnav1_reex,mph_next)    
 
+```
+
+
+```{r}
 plot_rawnav(rawnav1_reex,accel_mph_next3)    
 
+```
+
+## Test 3
+```{r}
 # Another one
 
 rawnav3 <-
   load_rawnav(
-    "C:/Users/WylieTimmerman/Documents/projects_local/WMATA_AVL_datamart/test_3.csv"
+    file.path(path_data,"test_3.csv")
   ) %>%
   cleanup_things()
 
 plot_rawnav(rawnav3,mph_next)    
 
-plot_rawnav(rawnav3,accel_mph_next3)    
+```
 
-# testcheckold
+```{r}
+plot_rawnav(rawnav3,accel_mph_next3)
+
+```
+
+## Old
+```{r}
 rawnav_tcold <-
   load_rawnav(
-    "C:/Users/WylieTimmerman/Documents/projects_local/WMATA_AVL_datamart/testcheckold.csv"
+        file.path(path_data,"testcheckold.csv")
   ) %>%
   mutate(
     mins_past_st = sec_past_st / 60,
@@ -197,79 +244,24 @@ rawnav_tcold <-
   )
 
 plot_dots(rawnav_tcold)    
+
+```
+
+```{r}
 plot_rawnav(rawnav_tcold, accel, "Acceleration (fps^2)")
-   
+```
+## "fixed"
+
+```{r}
 # fixed
 rawnav_tfixed <-
   load_rawnav(
-    "C:/Users/WylieTimmerman/Documents/projects_local/WMATA_AVL_datamart/testcheckfixed.csv"
+    file.path(path_data,"testcheckfixed.csv")
   ) %>%
   mutate(
     mins_past_st = sec_past_st/60
   )
 
-plot_rawnav(rawnav_tfixed,accel_next)    
-
-# other stuff -------------------------------------------------------------
-
-
-# check on speeds vs. veh_state
-
-rawnav_veh_state <-
-  rawnav %>%
-  select(
-    index_loc,
-    odom_ft,
-    sec_past_st,
-    fps_next,
-    fps_next3,
-    row_before_apc,
-    stop_window,
-    veh_state,
-    door_state
-  ) 
-View(rawnav_veh_state)
-
-rm(rawnav,rawnav_veh_state)
-
-# other -------------------------------------------------------------------
-
-# check on the cases where weird shit happened
-rawnav1 %>%
-  select(
-    index_loc,
-    odom_ft,
-    sec_past_st,
-    fps_next,
-    fps_next3,
-    accel_next,
-    accel_next3,
-    door_state
-  ) %>%
-  View()
-
-
-rawnav %>%
-  arrange(veh_state) %>%
-  mapview(.,zcol = 'veh_state')
-
-mapview(rawnav,zcol = "fps_next3", stroke = FALSE)
-
-# -------------------------------------------------------------------------
-# now that we've fixed accel/decel, diving further into the next steps
-
-rawnav_tfixed4 <-
-  load_rawnav(
-    "C:/Users/WylieTimmerman/Documents/projects_local/WMATA_AVL_datamart/test_checkfixed4.csv"
-  ) %>%
-  mutate(
-    mins_past_st = sec_past_st / 60,
-    accel_next_mph = accel_next / 1.467
-  )
-
-plot_rawnav(rawnav_tfixed4,accel_next_mph)    
-
-plot_rawnav(rawnav_tfixed4,fps_next)    
-
-# What is the speed we shou
+plot_rawnav(rawnav_tfixed,accel_next)
+```
 
