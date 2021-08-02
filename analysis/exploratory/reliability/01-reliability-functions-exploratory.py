@@ -8,7 +8,7 @@ Created on Thu Jul 22 2021
 # %% Import libraries
 
 # Libraries
-import os, sys, pandas as pd
+import os, sys, pandas as pd, numpy as np
 from dotenv import dotenv_values
 
 
@@ -52,63 +52,63 @@ rawnav_run_decomp_2_fil = (
     .loc[~rawnav_run_decomp_2_wisc.trip_seg.str.contains('32089', na = False)] 
     .query('tsp_dir_time == True')
     .query('basic_decomp != "End of Trip Pings"')
+    .assign(basic_decomp = lambda x: 
+                np.where(
+                    x.basic_decomp.isin(['<5 mph','>= 5mph']),
+                    "In Motion",
+                    x.basic_decomp
+                )
+            )
 )
 
 
-# %% Reliability by route-pattern
+# %% Function to calculate reliability metrics
 
 # Need to calculate stdev, mean, median, 95pct, MAD
 
-rely_stats_wisc_route = (
-    rawnav_run_decomp_2_fil
-    # Sum runtimes per trip
-    .groupby(['filename','index_run_start','route','overall_dir','basic_decomp','full_decomp'])
-    .agg(
-        secs_tot = ('secs_tot', 'sum')
+def rely_stats(rawnav_decomp,
+               grouping_vars):
+    
+    output = (
+        rawnav_decomp
+        # Sum runtimes per trip
+        .groupby(['filename','index_run_start'] + grouping_vars)
+        .agg(
+            secs_tot = ('secs_tot', 'sum')
+        )
+        .reset_index()
+        # Calculate metrics on trip-level runtimes
+        .groupby(grouping_vars)
+        .agg(
+            secs_tot_mean = ('secs_tot', 'mean'),
+            secs_tot_p50 = ('secs_tot', lambda x: x.quantile(.50)),
+            secs_tot_p95 = ('secs_tot', lambda x: x.quantile(.95)),
+            secs_tot_stdev = ('secs_tot', 'std'),
+            secs_tot_mad = ('secs_tot', 'mad')
+        )
+        .reset_index()
+        .assign(
+            secs_tot_cov = lambda x: x.secs_tot_stdev / x.secs_tot_mean,
+            secs_tot_buffer = lambda x: (x.secs_tot_p95 - x.secs_tot_mean) / x.secs_tot_mean
+        )            
     )
-    .reset_index()
-    # Calculate metrics on trip-level runtimes
-    .groupby(['route','overall_dir','basic_decomp','full_decomp'])
-    .agg(
-        secs_tot_mean = ('secs_tot', 'mean'),
-        secs_tot_p50 = ('secs_tot', lambda x: x.quantile(.50)),
-        secs_tot_p95 = ('secs_tot', lambda x: x.quantile(.95)),
-        secs_tot_stdev = ('secs_tot', 'std'),
-        secs_tot_mad = ('secs_tot', 'mad')
-    )
-    .reset_index()
-    .assign(
-        secs_tot_cov = lambda x: x.secs_tot_stdev / x.secs_tot_mean,
-        secs_tot_buffer = lambda x: (x.secs_tot_p95 - x.secs_tot_mean) / x.secs_tot_mean
-    )
-)
+        
+    return output
+    
+    
+    
+# %% Reliability by route-pattern
+
+grouping_route = ['route','overall_dir','tsp_period','basic_decomp','full_decomp']
+
+rely_stats_wisc_route = rely_stats(rawnav_run_decomp_2_fil, grouping_route)
+
 
 # %% Reliability by stop segment
 
-rely_stats_wisc_stop = (
-    rawnav_run_decomp_2_fil
-    # Sum runtimes per stop segment
-    .groupby(['filename','index_run_start','route','overall_dir','trip_seg','basic_decomp','full_decomp'])
-    .agg(
-        secs_tot = ('secs_tot', 'sum')
-    )
-    .reset_index()
-    # Calculate metrics on stop segment runtimes
-    .groupby(['route','overall_dir','trip_seg','basic_decomp','full_decomp',])
-    .agg(
-        secs_tot_mean = ('secs_tot', 'mean'),
-        secs_tot_p50 = ('secs_tot', lambda x: x.quantile(.50)),
-        secs_tot_p95 = ('secs_tot', lambda x: x.quantile(.95)),
-        secs_tot_stdev = ('secs_tot', 'std'),
-        secs_tot_mad = ('secs_tot', 'mad')
-    )
-    .reset_index()
-    .assign(
-        secs_tot_cov = lambda x: x.secs_tot_stdev / x.secs_tot_mean,
-        secs_tot_buffer = lambda x: (x.secs_tot_p95 - x.secs_tot_mean) / x.secs_tot_mean
-    )
-)
+grouping_stop_seg = ['route','overall_dir','trip_seg','tsp_period','basic_decomp','full_decomp']
 
+rely_stats_wisc_stop = rely_stats(rawnav_run_decomp_2_fil, grouping_stop_seg)
 
 
 # %% Visualize
