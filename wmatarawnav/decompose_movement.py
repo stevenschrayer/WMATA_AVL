@@ -454,60 +454,60 @@ def decompose_movement(
     )
         
     return(rawnav)
-    
-
-def interp_sec(x, bump = 0.999):
-    assert (bump >0 ) & (bump < 1)
         
-    x.set_index(['odom_ft_ts'], inplace = True)  
-    
-    if (x.index.duplicated().any()):
-        # this is where you have duplicate odom and sec_past_st values
-        # these will get a speed of 0/0
-        # this probably means the approach isn't feasible
-        x.reset_index(drop = True, inplace = True)
-        return(x)
-    elif (len(x.sec_past_st_copy) == 1):
-        x.reset_index(drop = True, inplace = True)
-        return(x)
-    elif (len(x.sec_past_st_copy) == 2):
-        x.sec_past_st_copy.iloc[-1] = x.sec_past_st_copy.iloc[0] + bump
-        return(x)
-    else:
-        # set everything after start to nan; should only apply when grouped anyway,
-        # so the first observation is all we need
-        
-        x.sec_past_st_copy.iloc[1:] = np.nan
-        
-        # replace last; in case we set to nan in last step, we use the first observation
-        x.sec_past_st_copy.iloc[-1] = x.sec_past_st_copy.iloc[0] + bump
-        
-        x.sec_past_st_copy = x.sec_past_st_copy.interpolate(method = "index")
-        
-        x.reset_index(drop = True, inplace = True)
-        return(x)
-    
-def interp_odom(x, ft_threshold = 2):
+def interp_odom(x, ft_threshold = 1, fix_interp = True):
     # ft_threshold is how far outside the bands of observed odom_ft values we would allow. a little
-    # wiggle room probbaly okay given how we understand these things working
+    # wiggle room probbaly okay given how we understand these integer issues appearing
+    # 
     
     x.set_index(['sec_past_st'], inplace = True)
     
     if (x.index.duplicated().any()):
-        breakpoint()
         raise ValueError("sec_past_st shouldn't be duplicated at this point")
     else:
         # interpolate
         x.odom_ft = x.odom_ft.interpolate(method = "index")
         
         # test
-        # TODO: at some point we may want these to hard reset to maximum or minimum values
+        # Could probably fix some of this, but oh well
+        if (fix_interp == True):
+            x = (
+                x
+                .assign(
+                    odom_low = lambda x, ft = ft_threshold : (
+                        (x.odom_ft < (x.odom_ft_min - ft))
+                    ),
+                    odom_hi = lambda x, ft = ft_threshold : (
+                        (x.odom_ft > (x.odom_ft_max + ft))    
+                    )
+                )
+                .assign(
+                    odom_ft = lambda x, ft = ft_threshold: np.select(
+                    [
+                        #I think we avoid evaluating other conditions 
+                        # if the first case is true
+                        x.odom_low.eq(False) & x.odom_hi.eq(False),
+                        x.odom_low,
+                        x.odom_hi,
+                    ],
+                    [
+                        x.odom_ft,
+                        x.odom_ft_min - ft,
+                        x.odom_ft_max + ft
+                    ],
+                    default = x.odom_ft # this is probably overkill
+                    )    
+                )
+                
+            )
+        
+        # this is a recalculation after fixes above
         x = (
             x
             .assign(
-                odom_interp_fail = lambda x : (
-                    (x.odom_ft < x.odom_ft_min) |
-                    (x.odom_ft > x.odom_ft_max)
+                odom_interp_fail = lambda x, ft = ft_threshold : (
+                    (x.odom_ft < (x.odom_ft_min - ft)) |
+                    (x.odom_ft > (x.odom_ft_max + ft))
                 )
             )
         )
@@ -516,9 +516,7 @@ def interp_odom(x, ft_threshold = 2):
         x.reset_index(inplace = True)
         return(x)
 
-def calc_rolling_vals2(rawnav,
-                       method = 'spline',
-                       fix_odom = True):
+def smooth_vals(rawnav):
     """
     Parameters
     ----------
@@ -546,12 +544,6 @@ def calc_rolling_vals2(rawnav,
         .assign(
             dupes = lambda x:
                 x.duplicated(
-                    subset = ['filename','index_run_start','door_state','sec_past_st'],
-                    keep = False
-                ),
-            # later experimented with this, but didn't want to break older code
-            dupes_nodoor = lambda x:
-                x.duplicated(
                     subset = ['filename','index_run_start','sec_past_st'],
                     keep = False
             ),
@@ -569,185 +561,82 @@ def calc_rolling_vals2(rawnav,
                 )
         )
     )
-        
-    # these are methods for handling dupes
-    if (method == "spline"):
-        rawnav_nodupe = (
-            rawnav.loc[rawnav.dupes == False]
+     
+    # Separate out the non-duplicated ones to save processing time
+    rawnav_nodupe = (
+        rawnav.loc[rawnav.dupes == False]
+    )
+    # Even though we could try to pull out only the ones that have repeated values and perform
+    # the agg on them, seems a little safer as we get going to do for all and then optimize
+    # later.
+    rawnav_dupe = (
+        rawnav
+        .loc[rawnav.dupes == True]
+        # trick here is i'm not sure what columns we'll keep
+        .groupby(
+            [
+                # these are the parts that don't vary by instance
+                # not sure if it's slower to do the big group or to
+                # just grab 'first' for each of these.
+                'filename',
+                'index_run_start',
+                # this is the one that we actually care about
+                'sec_past_st'
+            ],
+            as_index = False
         )
-        
-        rawnav_dupe = (
-            rawnav 
-            .loc[rawnav.dupes == True]
-            .assign(
-                sec_past_st_copy = lambda x: pd.to_numeric(x.sec_past_st),
-                # pandas only lets you interpolate over repeated vals when this is 
-                # datetime, so we do it this way.
-                odom_ft_ts = lambda x: pd.to_datetime(x.odom_ft)
-            )  
+        .agg(
+            # some of these are just to avoid a bigger groupby call
+            route_pattern = ('route_pattern',"first"),
+            pattern = ('pattern',"first"),
+            index_run_end = ('index_run_end',"first"),
+            route = ('route',"first"),
+            wday = ('wday',"first"),
+            start_date_time = ('start_date_time',"first"),
+            # in this sense, we're starting to lose data and have to make judgment calls
+            index_loc = ('index_loc','max'),
+            lat = ('lat','last'),
+            long = ('long','last'),
+            heading = ('heading','last'),
+            # i'm hoping it's never the case that door changes on the same second
+            # if it does, will be in a world of pain.
+            # this join works better when we expect every row to be filled
+            veh_state = ('veh_state', lambda x: ','.join(x.unique().astype(str))),
+            odom_ft_min = ('odom_ft','min'),
+            odom_ft_max = ('odom_ft','max'),
+            sat_cnt = ('sat_cnt','last'),
+            # TODO: taking the last might hide a door open that lasts <1 second, but that seems
+            # unlikly and we aren't likely to care.
+            door_state = ('door_state', 'last'),
+            door_state_all = ('door_state', lambda x: ','.join(x.unique().astype(str))),
+            # for stop_window, we are more likely to have blanks, so this works
+            # we also are likely to run into instances where the stop window close tags 
+            # show up in the same second as the stop window, so this just sorts them into a separate
+            # column
+            stop_window_e = ('stop_window_e', lambda x: x.str.cat(sep=",",na_rep = None)),
+            stop_window_x = ('stop_window_x', lambda x: x.str.cat(sep=",",na_rep = None)),
+            blank = ('blank', lambda x: ','.join(x.unique().astype(int).astype(str))),
+            lat_raw = ('lat_raw','last'),
+            long_raw = ('long_raw','last'),
+            row_before_apc = ('row_before_apc', lambda x: ','.join(x.unique().astype(int).astype(str))),
+            collapsed_rows = ('index_loc','count')
         )
-
-        rawnav_dupe = (
-            rawnav_dupe
-            .groupby((['filename','index_run_start','sec_past_st']))
-            .apply(lambda x: interp_sec(x, bump = 0.999))
-            .reset_index(drop = True)
+        .assign(
+            stop_window_e = lambda x: 
+                np.where(
+                    x.stop_window_e.eq(''),
+                    None,
+                    x.stop_window_e
+                ),
+            stop_window_x = lambda x: 
+                np.where(
+                    x.stop_window_x.eq(''),
+                    None,
+                    x.stop_window_x
+                )
         )
-
-        rawnav_dupe = ( 
-            rawnav_dupe
-            .drop(['sec_past_st'], axis = 'columns')
-            .rename(
-                {"sec_past_st_copy" : "sec_past_st"},
-                axis = "columns"
-            )
-        )
-        
-    elif (method == "agg"):
-        rawnav_nodupe = (
-            rawnav.loc[rawnav.dupes == False]
-        )
-    
-        # Even though we could try to pull out only the ones that have repeated values and perform
-        # the agg on them, seems a little safer as we get going to do for all and then optimize
-        # later.
-        rawnav_dupe = (
-            rawnav
-            .loc[rawnav.dupes == True]
-            # trick here is i'm not sure what columns we'll keep
-            .groupby(
-                [
-                    # these are the parts that don't vary by instance
-                    'filename',
-                    'index_run_start',
-                    'route_pattern',
-                    'pattern',
-                    'index_run_end',
-                    'route',
-                    'wday',
-                    'start_date_time',
-                    # this is the one that we actually care about
-                    'sec_past_st', 
-                    'door_state'
-                ],
-                as_index = False
-            )
-            .agg(
-                # some of these might be judgment calls about what to keep or chuck,
-                # anyway.
-                # TODO: come back and test to what extent we actually collapse things here.
-                index_loc = ('index_loc','max'),
-                lat = ('lat','last'),
-                long = ('long','last'),
-                heading = ('heading','last'),
-                # i'm hoping it's never the case that door changes on the same second
-                # if it does, will be in a world of pain.
-                # this join works better when we expect every row to be filled
-                veh_state = ('veh_state', lambda x: ','.join(x.unique().astype(str))),
-                odom_ft = ('odom_ft','max'),
-                sat_cnt = ('sat_cnt','last'),
-                # for stop_window, we are more likely to have blanks, so this works
-                stop_window_e = ('stop_window_e', lambda x: x.str.cat(sep=",",na_rep = None)),
-                stop_window_x = ('stop_window_x', lambda x: x.str.cat(sep=",",na_rep = None)),
-                blank = ('blank', lambda x: ','.join(x.unique().astype(int).astype(str))),
-                lat_raw = ('lat_raw','last'),
-                long_raw = ('long_raw','last'),
-                row_before_apc = ('row_before_apc', lambda x: ','.join(x.unique().astype(int).astype(str))),
-                collapsed_rows = ('index_loc','count')
-            )
-            .assign(
-                stop_window_e = lambda x: 
-                    np.where(
-                        x.stop_window_e.eq(''),
-                        None,
-                        x.stop_window_e
-                    ),
-                stop_window_x = lambda x: 
-                    np.where(
-                        x.stop_window_x.eq(''),
-                        None,
-                        x.stop_window_x
-                    )
-            )
-        )
+    )
             
-    elif (method == "agg_spline"):
-        # TODO: once we settle on a method, we'll cut out the other ones
-        rawnav_nodupe = (
-            rawnav.loc[rawnav.dupes_nodoor == False]
-        )
-        # Even though we could try to pull out only the ones that have repeated values and perform
-        # the agg on them, seems a little safer as we get going to do for all and then optimize
-        # later.
-        rawnav_dupe = (
-            rawnav
-            .loc[rawnav.dupes_nodoor == True]
-            # trick here is i'm not sure what columns we'll keep
-            .groupby(
-                [
-                    # these are the parts that don't vary by instance
-                    # not sure if it's slower to do the big group or to
-                    # just grab 'first' for each of these.
-                    'filename',
-                    'index_run_start',
-                    'route_pattern',
-                    'pattern',
-                    'index_run_end',
-                    'route',
-                    'wday',
-                    'start_date_time',
-                    # this is the one that we actually care about
-                    'sec_past_st'
-                ],
-                as_index = False
-            )
-            .agg(
-                # some of these might be judgment calls about what to keep or chuck,
-                # anyway.
-                # TODO: come back and test to what extent we actually collapse things here.
-                index_loc = ('index_loc','max'),
-                lat = ('lat','last'),
-                long = ('long','last'),
-                heading = ('heading','last'),
-                # i'm hoping it's never the case that door changes on the same second
-                # if it does, will be in a world of pain.
-                # this join works better when we expect every row to be filled
-                veh_state = ('veh_state', lambda x: ','.join(x.unique().astype(str))),
-                odom_ft_min = ('odom_ft','min'),
-                odom_ft_max = ('odom_ft','max'),
-                sat_cnt = ('sat_cnt','last'),
-                # TODO" this is a little risky, could show a longer door opening than there actually
-                # is.
-                door_state = ('door_state', 'last'),
-                door_state_all = ('door_state', lambda x: ','.join(x.unique().astype(str))),
-                # for stop_window, we are more likely to have blanks, so this works
-                stop_window_e = ('stop_window_e', lambda x: x.str.cat(sep=",",na_rep = None)),
-                stop_window_x = ('stop_window_x', lambda x: x.str.cat(sep=",",na_rep = None)),
-                blank = ('blank', lambda x: ','.join(x.unique().astype(int).astype(str))),
-                lat_raw = ('lat_raw','last'),
-                long_raw = ('long_raw','last'),
-                row_before_apc = ('row_before_apc', lambda x: ','.join(x.unique().astype(int).astype(str))),
-                collapsed_rows = ('index_loc','count')
-            )
-            .assign(
-                stop_window_e = lambda x: 
-                    np.where(
-                        x.stop_window_e.eq(''),
-                        None,
-                        x.stop_window_e
-                    ),
-                stop_window_x = lambda x: 
-                    np.where(
-                        x.stop_window_x.eq(''),
-                        None,
-                        x.stop_window_x
-                    )
-            )
-        )
-            
-    else:
-        print('nah')
-
     # recombine duplicated and non-duplicated
     rawnav = (
         pd.concat([
@@ -761,6 +650,23 @@ def calc_rolling_vals2(rawnav,
             ['dupes','stop_window'],
             axis = "columns"
         )
+    )
+    
+    # Next, we think some of the aggregated values are a little bit screwy, so we 
+    # set to NA and interpolate
+    rawnav = (
+        rawnav
+        .assign(
+            odom_ft = lambda x: np.where(
+                x.collapsed_rows.isna(),
+                x.odom_ft,
+                np.nan
+            ),
+            odom_interp_fail = lambda x: np.nan
+        )
+        .groupby(['filename','index_run_start'])
+        .apply(lambda x: interp_odom(x))
+        .reset_index(drop = True)
         .pipe(
             # Should have done this sooner, but definitely necessary after these aggregations
             ll.reorder_first_cols,
@@ -778,36 +684,23 @@ def calc_rolling_vals2(rawnav,
              'heading',
              'door_state',
              'veh_state',
-             'stop_window_e',
-             'stop_window_x',
              'row_before_apc',
              'lat',
              'long',
              'lat_raw',
-             'long_raw']
-        )
+             'long_raw',
+             'sat_cnt',
+             'collapsed_rows',
+             'odom_ft_min',
+             'odom_ft_max',
+             'odom_interp_fail',
+             'door_state_all',
+             'stop_window_e',
+             'stop_window_x',
+             'row_before_apc'
+             ]
+        )            
     )
-    
-    # Next, we think some of the aggregated values are a little bit screwy, so we 
-    # set to NA and interpolate
-    
-    if (fix_odom == True):
-        rawnav = (
-            rawnav
-            .assign(
-                odom_ft = lambda x: np.where(
-                    x.collapsed_rows.isna(),
-                    x.odom_ft,
-                    np.nan
-                ),
-                odom_interp_fail = lambda x: np.nan
-            )
-            .groupby(['filename','index_run_start'])
-            .apply(lambda x: interp_odom(x))
-            .reset_index(drop = True)            
-        )
-    else:
-        print('')        
 
      # TODO: should probably drop extra cols here and rearrange, dunno
 
@@ -884,6 +777,7 @@ def calc_rolling_vals2(rawnav,
     # lead on fps_next.
     
     # TODO: I should write the fps_next3 equivalent, but that gets kind of dicey anyway.
+    # we will probably move away from fps_next3 anyway
     rawnav_add = (
         rawnav_add 
         .assign(
@@ -910,7 +804,15 @@ def calc_rolling_vals2(rawnav,
     
     rawnav_add = (
         rawnav_add
-        .drop(['sec_past_st_lag','fps_lag'], axis = "columns")
+        .drop([
+            'sec_past_st_lag',
+            'fps_lag',
+            'odom_ft_next',
+            'sec_past_st_next',
+            'odom_ft_next3',
+            'sec_past_st_next3'
+            ],
+            axis = "columns")
         )
     
     return(rawnav_add)

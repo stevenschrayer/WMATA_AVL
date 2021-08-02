@@ -84,7 +84,7 @@ rawnav_fil = (
 
 # %% Start decomposition
 
-
+# TODO: replace with amit's methods
 rawnav_fil2 = (
     rawnav_fil
     # maybe we look a little bit closer at the southbound trips only
@@ -96,11 +96,8 @@ rawnav_fil2 = (
 
 rawnav_fil3 = wr.reset_odom(rawnav_fil2)
 
-# rawnav_fil4 = wr.calc_rolling_vals2(rawnav_fil3, method = "spline")
-
-# rawnav_fil4 = wr.calc_rolling_vals2(rawnav_fil3, method = "agg")
-
-rawnav_fil5 = wr.calc_rolling_vals2(rawnav_fil3, method = "agg_spline", fix_odom = True)
+# this calcs rolling vals and addresses issues
+rawnav_fil5 = wr.smooth_vals(rawnav_fil3)
 
 
 

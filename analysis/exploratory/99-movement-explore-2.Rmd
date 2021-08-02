@@ -249,6 +249,24 @@ plot_rawnav(rawnav_tfixed5,accel_next_mph)
 plot_rawnav(rawnav_tfixed5,fps_next)    
 ```
 
+## "fixed" 3
+
+```{r}
+rawnav_tfixed6 <-
+  load_rawnav(
+    file.path(path_data,"test_checkfixed6.csv")
+  ) %>%
+  mutate(
+    mins_past_st = sec_past_st / 60,
+    accel_next_mph = accel_next / 1.467
+  )
+```
+
+```{r, fig.width=6, fig.height=4}
+plot_rawnav(rawnav_tfixed6,accel_next_mph)    
+```
+
+
 # Case 2
 
 testfile = "rawnav04475210210.txt"
