@@ -172,8 +172,7 @@ plot_dots <-
 ```
 
 
-# Explore Cases
-
+# Case 1
 These are from:
 testfile = "rawnav07231210220.txt"
 testindex = 9877
@@ -195,7 +194,7 @@ rawnav_unfixed <-
   ) 
 ```
 
-```{r}
+```{r, fig.width=6, fig.height=4}
 plot_rawnav(rawnav_unfixed,accel)
 ```
 
@@ -226,6 +225,62 @@ plot_rawnav(rawnav_tfixed4,accel_next_mph)
 
 ```{r, fig.width=6, fig.height=4}
 plot_rawnav(rawnav_tfixed4,fps_next)    
-
 ```
+
+## "fixed" 2
+added in the spline after the agg
+
+```{r}
+rawnav_tfixed5 <-
+  load_rawnav(
+    file.path(path_data,"test_checkfixed5.csv")
+  ) %>%
+  mutate(
+    mins_past_st = sec_past_st / 60,
+    accel_next_mph = accel_next / 1.467
+  )
+```
+
+```{r, fig.width=6, fig.height=4}
+plot_rawnav(rawnav_tfixed5,accel_next_mph)    
+```
+
+```{r, fig.width=6, fig.height=4}
+plot_rawnav(rawnav_tfixed5,fps_next)    
+```
+
+# Case 2
+
+testfile = "rawnav04475210210.txt"
+testindex = 4279
+
+on this one, ran into some issues with door open and close on the 
+same second
+
+# unfixed
+
+```{r}
+rawnav_unfixed2 <-
+  load_rawnav(
+    file.path(path_data,"test_broken2.csv")
+  ) %>%
+  mutate(
+    mins_past_st = sec_past_st / 60,
+    sec_past_st_next = lead(sec_past_st),
+    odom_ft_next = lead(odom_ft),
+    fps_next = (odom_ft_next - odom_ft) / (sec_past_st_next - sec_past_st),
+    fps_next_lag = lag(fps_next),
+    sec_past_st_lag = lag(sec_past_st),
+    accel = (fps_next - fps_next_lag) / (sec_past_st_next - sec_past_st_lag)
+  ) 
+```
+
+```{r, fig.width=6, fig.height=4}
+rawnav_unfixed2 %>%
+  mutate(
+    door_state = as.numeric(parse_factor(door_state))
+  ) %>%
+  plot_rawnav(.,door_state)
+```
+
 
