@@ -38,11 +38,29 @@ def reset_odom(
 def decompose_mov(
     rawnav,
     speed_thresh_fps = 7.333,
-    max_fps = 130): # this is about the highest i ever saw when expressing on freeway, so yeah.
+    max_fps = 130,# this is about the highest i ever saw when expressing on freeway, so yeah.
+    stopped_fps = 2, #seems like this intuitively matches 'stopped' on the charts
+    slow_fps = 7.34):  #this is 5mph; when we see vehicles do this on chart, they are creeping usually
     # TODO: our goal here is to get to accel/decel/steady state 
     
-    
-
+    # Categorize stopped movement
+    rawnav = (
+        rawnav
+        .assign(
+            basic_decomp = lambda x, stop = stopped_fps: np.select(
+                [
+                x.odom_ft.le(stop),
+                x.odom_ft.le(stop),
+                ],
+                [
+                "stopped",
+                "slow"
+                ],
+                default = np.nan
+        )
+        
+        )
+    )
     
     return(rawnav)
         
@@ -466,6 +484,7 @@ def interp_odom(x, ft_threshold = 1, fix_interp = True):
         raise ValueError("sec_past_st shouldn't be duplicated at this point")
     else:
         # interpolate
+        # TODO: add options for different interpolation options
         x.odom_ft = x.odom_ft.interpolate(method = "index")
         
         # test
@@ -761,27 +780,20 @@ def smooth_vals(rawnav):
     rawnav_add.loc[rawnav_add.groupby(['filename','index_run_start']).tail(3).index, 'fps_next3'] = np.nan
     
     # calculate acceleration
-    rawnav_add[['fps_lag','sec_past_st_lag']] = (
+    rawnav_add[['fps_next_lag']] = (
         rawnav_add
-        .groupby(['filename','index_run_start'], sort = False)[['fps_next', 'sec_past_st']]
+        .groupby(['filename','index_run_start'], sort = False)[['fps_next']]
         .transform(lambda x: x.shift(1))
 
     )
 
-    # Parts of this could be a bit dicey, in a way. We get the acceleration at a point as the change 
-    # between the previous ping-to-ping segment (defined as fps_next in the last observation) and
-    # the current ping-to-ping segment (defined as fps_next in the current observation). This is
-    # therefore over three different pings, starting at sec_past_st in the previous observation
-    # and ending at sec_past_st_next for the current observation. Therefore we need some lagged
-    # values as well. This plots a bit better than the other alternatives that include an extra
-    # lead on fps_next.
-    
     # TODO: I should write the fps_next3 equivalent, but that gets kind of dicey anyway.
     # we will probably move away from fps_next3 anyway
     rawnav_add = (
         rawnav_add 
         .assign(
-            accel_next = lambda x: (x.fps_next - x.fps_lag) / (x.sec_past_st_next - x.sec_past_st_lag),
+            # this may seem a bit screwy, but it lines up well with intuitions when visualized
+            accel_next = lambda x: (x.fps_next - x.fps_next_lag) / (x.sec_past_st_next - x.sec_past_st),
         )
         # as before, we'll set these cases to nan and then fill
          .assign(
@@ -805,8 +817,6 @@ def smooth_vals(rawnav):
     rawnav_add = (
         rawnav_add
         .drop([
-            'sec_past_st_lag',
-            'fps_lag',
             'odom_ft_next',
             'sec_past_st_next',
             'odom_ft_next3',
