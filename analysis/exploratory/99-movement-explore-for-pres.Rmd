@@ -1,0 +1,71 @@
+---
+title: "Movement Explore for Presentation"
+output: html_notebook
+---
+
+```{r include=FALSE}
+source('99-movement-explore-setup.R', local = TRUE)
+```
+All examples in this notebook are for a 10AM Friday 30N 
+
+# Data Loads
+```{r}
+# this is the original with data issues
+rawnav_1 <-
+  load_rawnav(
+        file.path(path_data,"testcheckold.csv")
+  ) %>%
+  cleanup_things()
+
+# not quite the latest and greatest, but close
+rawnav_decomp <- 
+  load_rawnav(
+        file.path(path_data,"test_decomp_mov2.csv")
+  ) %>%
+  cleanup_things()
+```
+
+# Figures
+Raw data
+```{r, fig.width=6, fig.height=4}
+plot_rawnav(rawnav_1, accel_next, odom_min = 13577, odom_max = 14201)
+```
+after aggregation and interpolation
+```{r, fig.width=6, fig.height=4}
+plot_rawnav(rawnav_decomp, accel_next, odom_min = 13577, odom_max = 14201)
+```
+Accel graphs
+
+```{r, fig.width=6, fig.height=4}
+plot_fps_1 <- plot_rawnav(rawnav_decomp,fps_next, odom_min = 28069, odom_max = 29074)
+
+thebreaks2 <- c(-46, -14, -6.5, -2.5, 2.5, 6.5, 14, 46)
+
+plot_accel_1 <- 
+  rawnav_decomp %>%
+  mutate(
+    accel_next_bin = 
+      base::cut(
+        accel_next,
+        breaks = thebreaks2,
+        include.lowest = TRUE,
+        ordered_result = TRUE
+      )
+  ) %>%
+  plot_rawnav(.,accel_next_bin, odom_min = 28069, odom_max = 29074)
+
+subplot(plot_fps_1,plot_accel_1)
+```
+
+```{r}
+  plot_rawnav(rawnav_decomp, var = basic_decomp, odom_min = 28069, odom_max = 29074)
+```
+More examples
+```{r, fig.width=6, fig.height=4}
+plot_rawnav(rawnav_decomp,basic_decomp, odom_min = 6140, odom_max = 6535)
+```
+
+```{r, fig.width=6, fig.height=4}
+plot_rawnav(rawnav_decomp, basic_decomp, odom_min = 29630, odom_max = 32475)
+```
+

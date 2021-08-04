@@ -42,5 +42,5 @@ rawnav_fil7 = (
       )
 )
 
-rawnav_fil6.to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov3.csv"))
+rawnav_fil7.to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov3.csv"))
 
