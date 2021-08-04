@@ -2,7 +2,7 @@
 title: "Movement Explore 5"
 output: html_notebook
 ---
-
+This is the version with an additional requirement on no big accel/decel changes to be in steady state and the .25 threshold
 
 
 # Setup
@@ -103,6 +103,7 @@ cleanup_things <- function(rawnav){
 
 plot_rawnav <-
   function(rawnav, var, thetitle = NULL,odom_min = NULL,odom_max = NULL){
+    # setup
     if (is.null(thetitle)){
       thetitle = rlang::as_label(enquo(var))
     }
@@ -115,6 +116,7 @@ plot_rawnav <-
     
     varclass <- thedata %>% pull({{var}}) %>% class()
 
+    # Define basic time-space diagram
     g <- 
       ggplot(
         data = rawnav
@@ -137,6 +139,7 @@ plot_rawnav <-
       ylab("Trip Odometer Distance (Feet)") +
       theme_minimal()
 
+    # set colors
     if (all(varclass == "numeric")){
       g <-
         g +
@@ -144,6 +147,20 @@ plot_rawnav <-
           low = "#d7191c",
           mid = "#ffffbf",
           high = "#1a9641"
+        ) +
+        guides(color=guide_legend(title=thetitle))
+      
+    } if (rlang::as_label(var) == "basic_decomp"){
+      g <-
+        g +
+        scale_color_manual(
+          values = c(
+            "steady" = "#80b1d3",
+            "decel" = "#ffffb3",
+            "stopped" = "#fb8072",
+            "accel" = "#8dd3c7",
+            "other_delay" = "#bebada"
+          )
         ) +
         guides(color=guide_legend(title=thetitle))
       
@@ -158,17 +175,31 @@ plot_rawnav <-
         guides(color=guide_legend(title=thetitle))
     }
       
-    
-    # g
+    # convert to ggplotly
     gplot <- 
-      ggplotly(g, dynamicTicks = TRUE) 
+      ggplotly(
+        g, 
+        dynamicTicks = TRUE, 
+        tooltip = c("x","y","colour","text")
+      ) 
     
+    # set bounds
     if (!is.null(odom_min) & !is.null(odom_max)){
       sec_range <-
         thedata %>% # because we expect weird thing
         filter_range(odom_min,odom_max) %>%
         pull(sec_past_st) %>%
         range()
+
+      # add a little room
+      inter_sec_range <- sec_range[2] - sec_range[1]
+      sec_range[1] <- sec_range[1] - inter_sec_range * .25
+      sec_range[2] <- sec_range[2] + inter_sec_range * .25
+      
+      # odom _range
+      inter_odom_range <- odom_max - odom_min
+      odom_min <- odom_min - inter_odom_range * .25
+      odom_max <- odom_max + inter_odom_range * .25
       
       gplot <-
         gplot %>%
@@ -355,34 +386,34 @@ rawnav_decomp <-
   )
 ```
 
-
+"steady state" is a bit more inconsistent now with the accel requirement added. but now you get teh weird result that you can decel sharply in steady state (getting other_delay), hit a new speed that's still in steady state and go back to steady, then accelerate and go out of steady state again. A little weird.
 ```{r, fig.width=6, fig.height=4}
-plot_rawnav_man(rawnav_decomp2,basic_decomp, odom_min = 6140, odom_max = 6535)
+plot_rawnav_man(rawnav_decomp,basic_decomp, odom_min = 6140, odom_max = 6535)
 ```
 
 
 ```{r, fig.width=6, fig.height=4}
-plot_rawnav_man(rawnav_decomp2, basic_decomp, odom_min = 29630, odom_max = 32475)
+plot_rawnav_man(rawnav_decomp, basic_decomp, odom_min = 29630, odom_max = 32475)
 ```
 
 ```{r, fig.width=6, fig.height=4}
-rawnav_decomp2 %>%
+rawnav_decomp %>%
   plot_rawnav_man(.,basic_decomp, odom_min = 32114, odom_max = 32475)
 ```
 
 ```{r, fig.width=6, fig.height=4}
-rawnav_decomp2 %>%
+rawnav_decomp %>%
   plot_rawnav_man(.,basic_decomp, odom_min = 27336, odom_max = 28031)
 ```
 
 ```{r, fig.width=6, fig.height=4}
-rawnav_decomp2 %>%
+rawnav_decomp %>%
   plotly::highlight_key(.,~accel_next) %>%
   plot_rawnav_man(.,basic_decomp, odom_min = 28069, odom_max = 29074)
 ```
 
 ```{r, fig.width=6, fig.height=4}
-rawnav_decomp2 %>%
+rawnav_decomp %>%
   plotly::highlight_key(.,~fps_next) %>%
   plot_rawnav_man(.,basic_decomp, odom_min = 41225, odom_max = 43655)
 ```
