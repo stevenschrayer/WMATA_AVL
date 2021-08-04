@@ -31,3 +31,16 @@ rawnav_fil6 = (
 
 rawnav_fil6.to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov2.csv"))
 
+
+# using hte new decel condition
+rawnav_fil7 = (
+    rawnav_fil5
+     .query("filename == @testfile & index_run_start == @testindex")
+     .pipe(
+          wr.decompose_mov,
+          steady_low_thresh = .25
+      )
+)
+
+rawnav_fil6.to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov3.csv"))
+

@@ -43,7 +43,7 @@ def decompose_mov(
     slow_fps = 7.34, #this is 5mph; when we see vehicles do this on chart, they are creeping usually
     steady_accel_thresh = 2, #based on some casual observations
     steady_low_thresh = .10): 
-    # TODO: our goal here is to get to accel/decel/steady state 
+    # our goal here is to get to accel/decel/steady state 
     
     # Categorize stopped movement
     # for now, not distinguishing slow
@@ -64,6 +64,7 @@ def decompose_mov(
     
     # in these groups, find a steady state speed where going fast than slow speed
     # but don't have much acceleration
+    # breakpoint()
     rawnav_seg_steady = (
     	rawnav
         .query('(is_stopped == False) & (fps_next >= @slow_fps)')
@@ -86,11 +87,13 @@ def decompose_mov(
             how = "left"
         )
         .assign(
-            is_steady = lambda x: 
+            is_steady = lambda x, thresh = steady_accel_thresh: 
                 # seems like the low percentile on steady could catch part of accel phase,
                  # may want to add more conditions here later
                 (x.fps_next.ge(x.steady_fps)) & 
-                (x.is_stopped.eq(False))
+                (x.is_stopped.eq(False)) & 
+                # new accel condition
+                ((x.accel_next > -thresh) & (x.accel_next < thresh))
         )
     )
     
