@@ -99,9 +99,10 @@ rawnav_fil3 = wr.reset_odom(rawnav_fil2)
 # this calcs rolling vals and addresses issues
 rawnav_fil5 = wr.smooth_vals(rawnav_fil3)
 
+rawnav_fil6 = (
+    rawnav_fil5
+     .pipe(
+          wr.decompose_mov   
+      )
+)
 
-
-
-# rawnav_mov = (
-#     wr.decompose_mov(rawnav_fil3)
-# )
