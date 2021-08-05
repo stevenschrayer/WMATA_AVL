@@ -72,6 +72,9 @@ load_rawnav <-
 cleanup_things <- function(rawnav){
   df <- 
   rawnav %>%
+    mutate(
+      thegroup = paste0(filename,"-",index_run_start)
+    ) %>%
     group_by(filename, index_run_start) %>%
     mutate(
       mins_past_st = sec_past_st / 60
@@ -101,7 +104,9 @@ cleanup_things <- function(rawnav){
       mutate(
         thelabel = 
           paste0(
-            "steady fps: ", round(steady_fps,1),
+            "pattern: ", route_pattern,
+            "<br>trip: ", format(start_date_time,"%Y-%m-%d %H:%M:%S"),
+            "<br>steady fps: ", round(steady_fps,1),
             "<br>fps: ", round(fps_next,1),
             "<br>accel: ",round(accel_next,1)
           )
@@ -112,7 +117,9 @@ cleanup_things <- function(rawnav){
       mutate(
         thelabel = 
           paste0(
-            "fps: ", round(fps_next,1),
+            "pattern: ", route_pattern,
+            "<br>trip: ", format(start_date_time,"%Y-%m-%d %H:%M:%S"),
+            "<br>fps: ", round(fps_next,1),
             "<br>accel: ",round(accel_next,1)
           )
       )
@@ -152,6 +159,7 @@ plot_rawnav <-
     varclass <- thedata %>% pull({{var}}) %>% class()
     
     # Define basic time-space diagram
+    suppressWarnings({ #needed for the aes(text=) hack
     g <- 
       ggplot(
         data = rawnav
@@ -159,7 +167,9 @@ plot_rawnav <-
       geom_line(
         aes(
           y = odom_ft,
-          x = sec_past_st
+          x = sec_past_st,
+          group = thegroup,
+          text = thelabel
         ),
         color = "grey80"
       ) +
@@ -167,12 +177,15 @@ plot_rawnav <-
         aes(
           color = {{var}},
           y = odom_ft,
-          x = sec_past_st
+          x = sec_past_st,
+          group = thegroup,
+          text = thelabel
         )
       ) +
       xlab("Time Past Trip Start (Seconds)") +
       ylab("Trip Odometer Distance (Feet)") +
       theme_minimal()
+    })
     
     # set colors
     if (all(varclass == "numeric")){
