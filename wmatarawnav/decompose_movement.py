@@ -422,9 +422,9 @@ def smooth_vals(rawnav):
         )            
     )
 
-     # TODO: should probably drop extra cols here and rearrange, dunno
-
+    # TODO: should probably break the second half of this function into a separate function
     # sometimes the above returns that .loc view/copy warning? i'm not sure
+    #%% lag values
     rawnav[['odom_ft_next','sec_past_st_next']] = (
         rawnav
         .groupby(['filename','index_run_start'], sort = False)[['odom_ft','sec_past_st']]
@@ -433,12 +433,14 @@ def smooth_vals(rawnav):
 
 
     # We'll use a bigger lag for more stable values for free flow speed
+    # later, we decided not to use these
     rawnav[['odom_ft_next3','sec_past_st_next3']] = (
         rawnav
         .groupby(['filename','index_run_start'], sort = False)[['odom_ft','sec_past_st']]
         .transform(lambda x: x.shift(-3))
     )
     
+    #%% Calculate FPS
     rawnav_add = (
         rawnav
         .assign(
@@ -480,23 +482,23 @@ def smooth_vals(rawnav):
     rawnav_add.loc[rawnav_add.groupby(['filename','index_run_start']).tail(1).index, 'fps_next'] = np.nan
     rawnav_add.loc[rawnav_add.groupby(['filename','index_run_start']).tail(3).index, 'fps_next3'] = np.nan
     
-    # calculate acceleration
+    #%% Calculate acceleration
     rawnav_add[['fps_next_lag']] = (
         rawnav_add
         .groupby(['filename','index_run_start'], sort = False)[['fps_next']]
         .transform(lambda x: x.shift(1))
-
     )
 
-    # TODO: I should write the fps_next3 equivalent, but that gets kind of dicey anyway.
-    # we will probably move away from fps_next3 anyway
+    # Note, not replicating the 3rd ping lag, as it's a little dicey i htink
     rawnav_add = (
         rawnav_add 
         .assign(
             # this may seem a bit screwy, but it lines up well with intuitions when visualized
             # can share some notebooks (99-movement-explore-*.Rmd) 
             # that illustrate differences between approaches here if desired
-            # accel_next is also a bit of a misnomer; more like accel_at_point
+            # accel_next is also a bit of a misnomer; more like accel_at_point, 
+            # because some downstream/notebook code depends on accel_next, sticking to that
+            # nomenclature for now
             accel_next = lambda x: (x.fps_next - x.fps_next_lag) / (x.sec_past_st_next - x.sec_past_st),
         )
         # as before, we'll set these cases to nan and then fill
@@ -505,20 +507,51 @@ def smooth_vals(rawnav):
         )
     )
     
-    # this is the point where I should've written another function
+    # this is the point where I should've written another function to do these things
     rawnav_add[['accel_next']] = (
         rawnav_add
         .groupby(['filename','index_run_start'])[['accel_next']]
         .transform(lambda x: x.ffill())
     )
     
-    # but now, if you're the last row or last three rows, we reset you back to 
-    # np.nan
+    # but now, if you're the last row, we reset you back to np.nan
     rawnav_add.loc[rawnav_add.groupby(['filename','index_run_start']).tail(1).index, 'accel_next'] = np.nan
     
+    #%% Calculate Jerk
     # TODO: Look into derivative of acceleration (jerk)? might address some smoothing issues
-    # and help detect harsh breaking events, maybe.
+    rawnav_add[['accel_next_lag']] = (
+        rawnav_add
+        .groupby(['filename','index_run_start'], sort = False)[['accel_next']]
+        .transform(lambda x: x.shift(1))
+    )
     
+    rawnav_add = (
+        rawnav_add 
+        .assign(
+            # this may seem a bit screwy, but it lines up well with intuitions when visualized
+            # can share some notebooks (99-movement-explore-*.Rmd) 
+            # that illustrate differences between approaches here if desired
+            # accel_next is also a bit of a misnomer; more like accel_at_point, 
+            # because some downstream/notebook code depends on accel_next, sticking to that
+            # nomenclature for now
+            jerk_next = lambda x: (x.accel_next - x.accel_next_lag) / (x.sec_past_st_next - x.sec_past_st),
+        )
+        # as before, we'll set these cases to nan and then fill
+         .assign(
+            jerk_next = lambda x: x.jerk_next.replace([np.Inf,-np.Inf],np.nan),
+        )
+    )
+    
+    rawnav_add[['jerk_next']] = (
+        rawnav_add
+        .groupby(['filename','index_run_start'])[['jerk_next']]
+        .transform(lambda x: x.ffill())
+    )
+    
+    # but now, if you're the last row, we reset you back to np.nan
+    rawnav_add.loc[rawnav_add.groupby(['filename','index_run_start']).tail(1).index, 'jerk_next'] = np.nan
+        
+    #%% Cleanup
     # drop some leftover cols
     
     rawnav_add = (
@@ -527,7 +560,8 @@ def smooth_vals(rawnav):
             'odom_ft_next',
             'sec_past_st_next',
             'odom_ft_next3',
-            'sec_past_st_next3'
+            'sec_past_st_next3',
+            'accel_next_lag'
             ],
             axis = "columns")
         )
