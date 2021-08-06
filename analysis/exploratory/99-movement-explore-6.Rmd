@@ -14,20 +14,31 @@ this version of the data got rid of the steady state fps and just relied on a hi
 # not quite the latest and greatest, but close
 rawnav_decomp <- 
   load_rawnav(
-        file.path(path_data,"test_decomp_mov4.csv")
+    file.path(path_data,"test_decomp_mov5.csv")
   ) %>%
-  cleanup_things()
+  cleanup_things() %>%
+  mutate(
+    thelabel = 
+      paste0(
+        "pattern: ", route_pattern,
+        "<br>trip: ", format(start_date_time,"%Y-%m-%d %H:%M:%S"),
+        "<br>fps_next: ",round(fps_next,1),
+        "<br>fps3: ", round(fps3,1),
+        "<br>accel_next: ",round(accel_next,1),
+        "<br>accel3: ",round(accel3,1)
+      )
+  )
 ```
 
 # Figures
 after aggregation and interpolation
 ```{r, fig.width=6, fig.height=4}
-plot_rawnav(rawnav_decomp, accel_next, odom_min = 13577, odom_max = 14201)
+plot_rawnav(rawnav_decomp, accel3, odom_min = 13577, odom_max = 14201)
 ```
 Accel graphs
 
 ```{r, fig.width=6, fig.height=4}
-plot_fps_1 <- plot_rawnav(rawnav_decomp,fps_next, odom_min = 28069, odom_max = 29074)
+plot_fps_1 <- plot_rawnav(rawnav_decomp,fps3, odom_min = 28069, odom_max = 29074)
 
 thebreaks2 <- c(-46, -14, -6.5, -2.5, 2.5, 6.5, 14, 46)
 
@@ -36,7 +47,7 @@ plot_accel_1 <-
   mutate(
     accel_next_bin = 
       base::cut(
-        accel_next,
+        accel3,
         breaks = thebreaks2,
         include.lowest = TRUE,
         ordered_result = TRUE

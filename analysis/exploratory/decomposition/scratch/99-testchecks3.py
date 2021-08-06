@@ -64,3 +64,32 @@ test = (
 )
 
 
+# this is a quick dump of non-stedy fps method
+(
+    rawnav_fil6
+    .query("filename == @testfile & index_run_start == @testindex")
+    .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov4.csv"))
+)
+
+
+(
+    rawnav_fil6
+     .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov4_all.csv"))
+)
+
+
+
+# this is same as above in decomp, but new smoothed values
+(
+    rawnav_fil6
+    .query("filename == @testfile & index_run_start == @testindex")
+    .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov5.csv"))
+)
+
+
+(
+    rawnav_fil6
+     .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov5_all.csv"))
+)
+
+

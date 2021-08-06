@@ -71,7 +71,7 @@ def decompose_mov2(
                 (x.fps_next.ge(slow)) & 
                 (x.is_stopped.eq(False)) & 
                 # new accel condition
-                ((x.accel_next > -thresh) & (x.accel_next < thresh))
+                ((x.accel3 > -thresh) & (x.accel3 < thresh))
         )
     )
     
@@ -541,6 +541,8 @@ def smooth_vals(rawnav):
              ]
         )            
     )
+    
+    return(rawnav)
 
 def calc_rolling_vals2(rawnav):
     
