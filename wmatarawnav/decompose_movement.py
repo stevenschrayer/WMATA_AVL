@@ -35,6 +35,126 @@ def reset_odom(
     
     return(rawnav)
 
+def decompose_mov2(
+    rawnav,
+    speed_thresh_fps = 7.333,
+    max_fps = 130,# this is about the highest i ever saw when expressing on freeway, so yeah.
+    stopped_fps = 3, #upped from 2
+    slow_fps = 14.67, # upped default to 10mph
+    steady_accel_thresh = 3, #based on some casual observations
+    steady_low_thresh = .10): 
+    # our goal here is to get to accel/decel/steady state 
+    
+    # Categorize stopped movement
+    # for now, not distinguishing slow
+    rawnav = (
+        rawnav
+        .assign(
+            # need a True/False that's easily coercible to numeric
+            is_stopped = lambda x, stop = stopped_fps: x.fps_next.le(stop)
+        )
+    )
+    
+    # categorize groups
+    rawnav['stopped_changes'] = (
+    	rawnav
+    	.groupby(['filename','index_run_start'])['is_stopped']
+    	.transform(lambda x: x.diff().ne(0).cumsum())
+    )
+    
+    rawnav = (
+        rawnav
+        .assign(
+            is_steady = lambda x, thresh = steady_accel_thresh, slow = slow_fps: 
+                # seems like the low percentile on steady could catch part of accel phase,
+                 # may want to add more conditions here later
+                (x.fps_next.ge(slow)) & 
+                (x.is_stopped.eq(False)) & 
+                # new accel condition
+                ((x.accel_next > -thresh) & (x.accel_next < thresh))
+        )
+    )
+    
+    # assign accel vs. decel based on where you're at between stopped and steady
+    # TODO: will need case where you never get to steady state
+    rawnav_seg_steady_lims = (
+    	rawnav
+        .query('(is_stopped == False) & (is_steady == True)')
+    	.groupby(['filename','index_run_start','stopped_changes'])
+    	.agg(
+            steady_fps_sec_start = ('sec_past_st', 'min'),
+            steady_fps_sec_end = ('sec_past_st', 'max')
+        )
+        .reset_index()
+    )
+
+    # rejoin the lims
+    rawnav = (
+        rawnav
+        # .drop(['steady_fps_sec_start','steady_fps_sec_end'], axis = "columns")
+        .merge(
+            rawnav_seg_steady_lims,
+            on = ['filename','index_run_start','stopped_changes'],
+            how = "left"
+        )
+        .assign(
+            accel_decel = lambda x: 
+                np.select(
+                    [
+                    (x.sec_past_st < x.steady_fps_sec_start) & x.is_stopped.eq(False), 
+                    (x.sec_past_st > x.steady_fps_sec_end) & x.is_stopped.eq(False),
+                    x.steady_fps_sec_start.isna()
+                    ],
+                    [
+                     "accel",
+                     "decel",
+                     "other_delay"
+                    ],
+                    default = np.nan
+                    )
+        )
+    )
+        
+    # assign the decomp
+    rawnav = (
+        rawnav
+        .assign(
+            basic_decomp = lambda x: np.select(
+                [
+                x.is_stopped.eq(True),
+                x.is_steady.eq(True),
+                x.accel_decel.ne("nan"), #TODO: i screwed something up
+                x.is_steady.eq(False) & x.is_stopped.eq(False) & x.accel_decel.eq("nan")
+                ],
+                [
+                "stopped",
+                "steady",
+                x.accel_decel,
+                "other_delay"
+                ]
+            )
+        )
+    )
+    
+    # once no longer debugging, drop these cols
+    # rawnav = (
+    #     rawnav
+    #     .drop([
+    #         "is_stopped",
+    #         "stopped_changes",
+    #         "steady_fps",
+    #         "steady_fps",
+    #         "steady_fps_sec_start",
+    #         "steady_fps_sec_end",
+    #         "accel_decel"
+    #         ],
+    #         axis = "columns"
+    #     )
+    # )
+    
+    return(rawnav)
+        
+
 def decompose_mov(
     rawnav,
     speed_thresh_fps = 7.333,

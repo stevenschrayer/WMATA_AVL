@@ -45,3 +45,22 @@ rawnav_fil7 = (
 rawnav_fil7.to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov3.csv"))
 rawnav_fil6.to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov3_all.csv"))
 
+test = (
+    rawnav_fil6
+    .query("filename == @testfile & index_run_start == @testindex")
+)
+
+# this is getting rid of steady_fps
+(
+    rawnav_fil6
+    .query("filename == @testfile & index_run_start == @testindex")
+    .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov4.csv"))
+)
+
+
+(
+    rawnav_fil6
+     .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov4_all.csv"))
+)
+
+

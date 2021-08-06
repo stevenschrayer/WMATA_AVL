@@ -1,0 +1,108 @@
+---
+title: "Movement Explore for Presentation"
+output: html_notebook
+---
+
+```{r include=FALSE}
+source('99-movement-explore-setup.R', local = TRUE)
+```
+All examples in this notebook are for a 10AM Friday 30N 
+this version of the data got rid of the steady state fps and just relied on a higher slow speed threshold and smoothed data
+
+# Data Loads
+```{r}
+# not quite the latest and greatest, but close
+rawnav_decomp <- 
+  load_rawnav(
+        file.path(path_data,"test_decomp_mov4.csv")
+  ) %>%
+  cleanup_things()
+```
+
+# Figures
+after aggregation and interpolation
+```{r, fig.width=6, fig.height=4}
+plot_rawnav(rawnav_decomp, accel_next, odom_min = 13577, odom_max = 14201)
+```
+Accel graphs
+
+```{r, fig.width=6, fig.height=4}
+plot_fps_1 <- plot_rawnav(rawnav_decomp,fps_next, odom_min = 28069, odom_max = 29074)
+
+thebreaks2 <- c(-46, -14, -6.5, -2.5, 2.5, 6.5, 14, 46)
+
+plot_accel_1 <- 
+  rawnav_decomp %>%
+  mutate(
+    accel_next_bin = 
+      base::cut(
+        accel_next,
+        breaks = thebreaks2,
+        include.lowest = TRUE,
+        ordered_result = TRUE
+      )
+  ) %>%
+  plot_rawnav(.,accel_next_bin, odom_min = 28069, odom_max = 29074)
+
+subplot(plot_fps_1,plot_accel_1)
+```
+Seems like there's a lot more other dleay here
+```{r}
+  plot_rawnav(rawnav_decomp, var = basic_decomp, odom_min = 28069, odom_max = 29074)
+```
+this looks almost identical to the last version
+
+```{r, fig.width=6, fig.height=4}
+plot_rawnav(rawnav_decomp,basic_decomp, odom_min = 6140, odom_max = 6535)
+```
+
+despite dropping the steady state fps, still see case where the accel phase looks a little truncated
+```{r, fig.width=6, fig.height=4}
+plot_rawnav(rawnav_decomp, basic_decomp, odom_min = 29630, odom_max = 32475)
+```
+
+```{r, fig.width=6, fig.height=4}
+rawnav_decomp <- 
+  load_rawnav(
+    file.path(path_data,"test_decomp_mov3_all.csv")
+  ) %>%
+  cleanup_things()
+
+rawnav_decomp_trips <-
+  rawnav_decomp %>%
+  distinct(
+    thegroup,
+    route_pattern,
+    pattern,
+    route,
+    wday,
+    start_date_time
+  )
+
+# 817, 1117, 1217
+
+keep_groups <- c(
+  # "rawnav06490210205.txt-3488",
+  "rawnav07220210205.txt-3197",
+  # "rawnav07232210205.txt-3866",
+  "rawnav06539210205.txt-8606",
+  "rawnav07173210205.txt-8873"
+)
+
+# rawnav_decomp_trips %>%
+#   filter(
+#     thegroup %in% keep_groups
+#   ) %>% View()
+
+rawnav_decomp_fil <-
+  rawnav_decomp %>%
+  filter(
+    thegroup %in% keep_groups
+  )
+
+plot_rawnav(rawnav_decomp_fil,
+            basic_decomp,
+            odom_min = 10000,
+            odom_max = 16000)
+```
+
