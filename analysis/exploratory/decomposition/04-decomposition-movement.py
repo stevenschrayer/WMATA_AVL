@@ -107,7 +107,10 @@ rawnav_fil5 = wr.calc_rolling_vals2(rawnav_fil4)
 rawnav_fil6 = (
     rawnav_fil5
      .pipe(
-          wr.decompose_mov2   
+          wr.decompose_mov2,
+          stopped_fps = 3, #upped from 2
+          slow_fps = 14.67, # upped default to 10mph
+          steady_accel_thresh = 2, #based on some casual observations
       )
 )
 

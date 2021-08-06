@@ -14,7 +14,7 @@ this version of the data got rid of the steady state fps and just relied on a hi
 # not quite the latest and greatest, but close
 rawnav_decomp <- 
   load_rawnav(
-    file.path(path_data,"test_decomp_mov5.csv")
+    file.path(path_data,"test_decomp_mov6.csv")
   ) %>%
   cleanup_things() %>%
   mutate(
@@ -28,6 +28,24 @@ rawnav_decomp <-
         "<br>accel3: ",round(accel3,1)
       )
   )
+
+rawnav_decomp_all <- 
+  load_rawnav(
+    file.path(path_data,"test_decomp_mov6_all.csv")
+  ) %>%
+  cleanup_things() %>%
+  mutate(
+    thelabel = 
+      paste0(
+        "pattern: ", route_pattern,
+        "<br>trip: ", format(start_date_time,"%Y-%m-%d %H:%M:%S"),
+        "<br>fps_next: ",round(fps_next,1),
+        "<br>fps3: ", round(fps3,1),
+        "<br>accel_next: ",round(accel_next,1),
+        "<br>accel3: ",round(accel3,1)
+      )
+  )
+
 ```
 
 # Figures
@@ -73,14 +91,9 @@ plot_rawnav(rawnav_decomp, basic_decomp, odom_min = 29630, odom_max = 32475)
 ```
 
 ```{r, fig.width=6, fig.height=4}
-rawnav_decomp <- 
-  load_rawnav(
-    file.path(path_data,"test_decomp_mov3_all.csv")
-  ) %>%
-  cleanup_things()
 
 rawnav_decomp_trips <-
-  rawnav_decomp %>%
+  rawnav_decomp_all %>%
   distinct(
     thegroup,
     route_pattern,
@@ -100,18 +113,13 @@ keep_groups <- c(
   "rawnav07173210205.txt-8873"
 )
 
-# rawnav_decomp_trips %>%
-#   filter(
-#     thegroup %in% keep_groups
-#   ) %>% View()
-
-rawnav_decomp_fil <-
-  rawnav_decomp %>%
+rawnav_decomp_all_fil <-
+  rawnav_decomp_all %>%
   filter(
     thegroup %in% keep_groups
   )
 
-plot_rawnav(rawnav_decomp_fil,
+plot_rawnav(rawnav_decomp_all_fil,
             basic_decomp,
             odom_min = 10000,
             odom_max = 16000)

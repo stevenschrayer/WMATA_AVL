@@ -68,7 +68,7 @@ def decompose_mov2(
             is_steady = lambda x, thresh = steady_accel_thresh, slow = slow_fps: 
                 # seems like the low percentile on steady could catch part of accel phase,
                  # may want to add more conditions here later
-                (x.fps_next.ge(slow)) & 
+                (x.fps3.ge(slow)) & 
                 (x.is_stopped.eq(False)) & 
                 # new accel condition
                 ((x.accel3 > -thresh) & (x.accel3 < thresh))
@@ -91,7 +91,6 @@ def decompose_mov2(
     # rejoin the lims
     rawnav = (
         rawnav
-        # .drop(['steady_fps_sec_start','steady_fps_sec_end'], axis = "columns")
         .merge(
             rawnav_seg_steady_lims,
             on = ['filename','index_run_start','stopped_changes'],
