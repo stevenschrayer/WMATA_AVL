@@ -550,15 +550,6 @@ def calc_rolling_vals2(rawnav):
         .groupby(['filename','index_run_start'], sort = False)[['odom_ft','sec_past_st']]
         .transform(lambda x: x.shift(-1))
     )
-
-
-    # We'll use a bigger lag for more stable values for free flow speed
-    # later, we decided not to use these
-    rawnav[['odom_ft_next3','sec_past_st_next3']] = (
-        rawnav
-        .groupby(['filename','index_run_start'], sort = False)[['odom_ft','sec_past_st']]
-        .transform(lambda x: x.shift(-3))
-    )
     
     #%% Calculate FPS
     rawnav = (
@@ -567,40 +558,17 @@ def calc_rolling_vals2(rawnav):
             secs_marg = lambda x: x.sec_past_st_next - x.sec_past_st,
             odom_ft_marg = lambda x: x.odom_ft_next - x.odom_ft,
             fps_next = lambda x: ((x.odom_ft_next - x.odom_ft) / 
-                                (x.sec_past_st_next - x.sec_past_st)),
-            fps_next3 = lambda x: ((x.odom_ft_next3 - x.odom_ft) / 
-                                 (x.sec_past_st_next3 - x.sec_past_st))
+                                (x.sec_past_st_next - x.sec_past_st))
+        )
+        # if you get nan's, it's usually zero travel distance and zero time around 
+        # doors. the exception is at the end of the trip.
+        .assign(
+            fps_next = lambda x: x.fps_next.replace([np.nan],0)
         )
     )
         
-    # if you get nan's, it's usually zero travel distance and zero time around 
-    # doors. the exception is at the end of the trip.
-    rawnav = (
-        rawnav
-        .assign(
-            fps_next = lambda x: x.fps_next.replace([np.nan],0),
-            fps_next3 = lambda x: x.fps_next3.replace([np.nan],0)
-        )
-        # we'll set np.Inf to np.nan so we can fill in the following step
-        .assign(
-            fps_next = lambda x: x.fps_next.replace([np.Inf],np.nan),
-            fps_next3 = lambda x: x.fps_next3.replace([np.Inf],np.nan),
-        )
-    )
-    
-    # if you get infinite on speed, it's because your odometer increments but seconds
-    # don't. as discussed above, rather than dropping these values or interpolating on 
-    # sec_past_st, for now we'll just fill the previous speed value forward 
-    rawnav[['fps_next','fps_next3']] = (
-        rawnav
-        .groupby(['filename','index_run_start'])[['fps_next','fps_next3']]
-        .transform(lambda x: x.ffill())
-    )
-    
-    # but now, if you're the last row or last three rows, we reset you back to 
-    # np.nan
+    # if you're the last row , we reset you back to np.nan
     rawnav.loc[rawnav.groupby(['filename','index_run_start']).tail(1).index, 'fps_next'] = np.nan
-    rawnav.loc[rawnav.groupby(['filename','index_run_start']).tail(3).index, 'fps_next3'] = np.nan
     
     #%% Calculate acceleration
     rawnav[['fps_next_lag']] = (
@@ -627,13 +595,6 @@ def calc_rolling_vals2(rawnav):
         )
     )
     
-    # this is the point where I should've written another function to do these things
-    rawnav[['accel_next']] = (
-        rawnav
-        .groupby(['filename','index_run_start'])[['accel_next']]
-        .transform(lambda x: x.ffill())
-    )
-    
     # but now, if you're the last row, we reset you back to np.nan
     rawnav.loc[rawnav.groupby(['filename','index_run_start']).tail(1).index, 'accel_next'] = np.nan
     
@@ -648,12 +609,6 @@ def calc_rolling_vals2(rawnav):
     rawnav = (
         rawnav 
         .assign(
-            # this may seem a bit screwy, but it lines up well with intuitions when visualized
-            # can share some notebooks (99-movement-explore-*.Rmd) 
-            # that illustrate differences between approaches here if desired
-            # accel_next is also a bit of a misnomer; more like accel_at_point, 
-            # because some downstream/notebook code depends on accel_next, sticking to that
-            # nomenclature for now
             jerk_next = lambda x: (x.accel_next - x.accel_next_lag) / (x.sec_past_st_next - x.sec_past_st),
         )
         # as before, we'll set these cases to nan and then fill
@@ -662,29 +617,64 @@ def calc_rolling_vals2(rawnav):
         )
     )
     
-    rawnav[['jerk_next']] = (
-        rawnav
-        .groupby(['filename','index_run_start'])[['jerk_next']]
-        .transform(lambda x: x.ffill())
-    )
-    
     # but now, if you're the last row, we reset you back to np.nan
     rawnav.loc[rawnav.groupby(['filename','index_run_start']).tail(1).index, 'jerk_next'] = np.nan
         
+    #%% Calculate the smoothed values
+    rawnav = (
+        rawnav
+        .assign(timest = lambda x: pd.to_datetime(x.start_date_time)+ pd.to_timedelta(x.sec_past_st, unit = "s"))
+        .set_index('timest')
+    )
+    
+    # this works
+    rawnav['fps3'] = (
+        rawnav
+        .groupby(['filename','index_run_start'],sort = False)['fps_next']
+        .transform(
+            lambda x:
+                x.rolling(
+                    window = '3s', 
+                    min_periods = 1, 
+                    center = True, 
+                    win_type = None
+                )
+                .mean()
+        )
+    )
+        
+    # this works
+    rawnav[['fps3','accel3','jerk3']] = (
+        rawnav
+        .groupby(['filename','index_run_start'],sort = False)[['fps_next','accel_next','jerk_next']]
+        .transform(
+            lambda x:
+                x.rolling(
+                    window = '3s', 
+                    min_periods = 1, 
+                    center = True, 
+                    win_type = None
+                )
+                .mean()
+        )
+    )
+        
+    rawnav.reset_index(inplace = True, drop = True)
+    
+    
     #%% Cleanup
     # drop some leftover cols
-    
     rawnav = (
         rawnav
         .drop([
             'odom_ft_next',
             'sec_past_st_next',
-            'odom_ft_next3',
-            'sec_past_st_next3',
+            'fps_next_lag',
             'accel_next_lag'
             ],
-            axis = "columns")
+            axis = "columns"
         )
+    )
     
     return(rawnav)
     
