@@ -111,6 +111,21 @@ cleanup_things <- function(rawnav){
             "<br>accel: ",round(accel_next,1)
           )
       )
+  } else if ("accel9" %in% colnames(df)){
+    df <-
+      df %>%
+      mutate(
+        thelabel = 
+          paste0(
+            "pattern: ", route_pattern,
+            "<br>trip: ", format(start_date_time,"%Y-%m-%d %H:%M:%S"),
+            "<br>fps: ", round(fps_next,1),
+            "<br>fps3: ", round(fps3,1),
+            "<br>accel: ",round(accel_next,1),
+            "<br>accel9: ",round(accel9,1)
+          )
+      )
+  
   } else {
     df <-
       df %>%
@@ -203,9 +218,11 @@ plot_rawnav <-
         g +
         scale_color_manual(
           values = c(
+            # based on brewer qualitative set 3
             "steady" = "#80b1d3",
             "decel" = "#ffffb3",
-            "stopped" = "#fb8072",
+            "stopped_pax" = "#fb8072",
+            "stopped_nopax" = "#fdb462",
             "accel" = "#8dd3c7",
             "other_delay" = "#bebada"
           )
