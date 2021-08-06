@@ -12,6 +12,8 @@ from . import decompose_rawnav as dr
 # we'll use this to just identify what the heck the bus is doing at any particular
 # point in time.
 
+# %% cleanup functions
+
 def reset_odom(
     rawnav,
     groupvars = ['filename','index_run_start']    
@@ -35,17 +37,15 @@ def reset_odom(
     
     return(rawnav)
 
-def decompose_mov2(
+def decompose_mov(
     rawnav,
-    speed_thresh_fps = 7.333,
-    max_fps = 130,# this is about the highest i ever saw when expressing on freeway, so yeah.
-    stopped_fps = 3, #upped from 2
     slow_fps = 14.67, # upped default to 10mph
-    steady_accel_thresh = 3, #based on some casual observations
-    steady_low_thresh = .10): 
+    steady_accel_thresh = 2,
+    stopped_fps = 3): 
     # our goal here is to get to accel/decel/steady state 
     
-    # Categorize stopped movement
+    # %% Categorize stopped movement
+    # JACK: you may want to steal next few chunks
     # for now, not distinguishing slow
     rawnav = (
         rawnav
@@ -55,15 +55,15 @@ def decompose_mov2(
         )
     )
     
-    # categorize groups
+    #%% categorize groups
     rawnav['stopped_changes'] = (
     	rawnav
     	.groupby(['filename','index_run_start'])['is_stopped']
     	.transform(lambda x: x.diff().ne(0).cumsum())
     )
     
-    # calc rolling vals only within stop segments
-    rawnav = calc_rolling_vals2(rawnav,['filename','index_run_start','stopped_changes'])
+    #%% calc rolling vals only within stop segments
+    rawnav = calc_rolling(rawnav,['filename','index_run_start','stopped_changes'])
     
     rawnav = (
         rawnav
@@ -74,12 +74,27 @@ def decompose_mov2(
                 (x.fps3.ge(slow)) & 
                 (x.is_stopped.eq(False)) & 
                 # new accel condition
-                ((x.accel10 > -thresh) & (x.accel10 < thresh))
+                ((x.accel9 > -thresh) & (x.accel9 < thresh))
         )
     )
     
-    # assign accel vs. decel based on where you're at between stopped and steady
-    # TODO: will need case where you never get to steady state
+    # %% Identify if stopped for pax
+    # TODO: this approach is only so-so for cases where the bus pulls forward slowly
+    # then stops again
+    rawnav = (
+        rawnav
+        .assign(
+            door_state_closed=lambda x: x.door_state == "C",
+        )
+    )
+    
+    rawnav['any_door_open'] = (
+        rawnav
+        .groupby(['filename','index_run_start','stopped_changes'])['door_state_closed']
+        .transform(lambda x: any(~x))       
+    )
+        
+    # %% Calculate steady state
     rawnav_seg_steady_lims = (
     	rawnav
         .query('(is_stopped == False) & (is_steady == True)')
@@ -117,19 +132,21 @@ def decompose_mov2(
         )
     )
         
-    # assign the decomp
+    # %% assign the decomp
     rawnav = (
         rawnav
         .assign(
             basic_decomp = lambda x: np.select(
                 [
-                x.is_stopped.eq(True),
+                x.is_stopped.eq(True) & x.any_door_open.eq(True),
+                x.is_stopped.eq(True) & x.any_door_open.eq(False),
                 x.is_steady.eq(True),
-                x.accel_decel.ne("nan"), #TODO: i screwed something up
+                x.accel_decel.ne("nan"), #TODO: i screwed something up with strings, gah
                 x.is_steady.eq(False) & x.is_stopped.eq(False) & x.accel_decel.eq("nan")
                 ],
                 [
-                "stopped",
+                "stopped_pax",
+                "stopped_nopax",
                 "steady",
                 x.accel_decel,
                 "other_delay"
@@ -138,6 +155,8 @@ def decompose_mov2(
         )
     )
     
+
+    # %% cleanup
     # once no longer debugging, drop these cols
     # rawnav = (
     #     rawnav
@@ -156,150 +175,11 @@ def decompose_mov2(
     
     return(rawnav)
         
-
-def decompose_mov(
-    rawnav,
-    speed_thresh_fps = 7.333,
-    max_fps = 130,# this is about the highest i ever saw when expressing on freeway, so yeah.
-    stopped_fps = 2, #seems like this intuitively matches 'stopped' on the charts
-    slow_fps = 7.34, #this is 5mph; when we see vehicles do this on chart, they are creeping usually
-    steady_accel_thresh = 2, #based on some casual observations
-    steady_low_thresh = .10): 
-    # our goal here is to get to accel/decel/steady state 
-    
-    # Categorize stopped movement
-    # for now, not distinguishing slow
-    rawnav = (
-        rawnav
-        .assign(
-            # need a True/False that's easily coercible to numeric
-            is_stopped = lambda x, stop = stopped_fps: x.fps_next.le(stop)
-        )
-    )
-    
-    # categorize groups
-    rawnav['stopped_changes'] = (
-    	rawnav
-    	.groupby(['filename','index_run_start'])['is_stopped']
-    	.transform(lambda x: x.diff().ne(0).cumsum())
-    )
-    
-    # in these groups, find a steady state speed where going fast than slow speed
-    # but don't have much acceleration
-    # breakpoint()
-    rawnav_seg_steady = (
-    	rawnav
-        .query('(is_stopped == False) & (fps_next >= @slow_fps)')
-        .query('(accel_next > -(@steady_accel_thresh)) & (accel_next < @steady_accel_thresh)')
-    	.groupby(['filename','index_run_start','stopped_changes'])
-    	.agg(
-            steady_fps = ('fps_next', lambda x: x.quantile([steady_low_thresh]))
-        )
-        .reset_index()
-    )
-    
-    # assign the steady state back to data
-    rawnav = (
-        rawnav
-        # mostly for interactive issues with name joins
-        # .drop(['steady_fps'], axis = "columns")
-        .merge(
-            rawnav_seg_steady,
-            on = ['filename','index_run_start','stopped_changes'],
-            how = "left"
-        )
-        .assign(
-            is_steady = lambda x, thresh = steady_accel_thresh: 
-                # seems like the low percentile on steady could catch part of accel phase,
-                 # may want to add more conditions here later
-                (x.fps_next.ge(x.steady_fps)) & 
-                (x.is_stopped.eq(False)) & 
-                # new accel condition
-                ((x.accel_next > -thresh) & (x.accel_next < thresh))
-        )
-    )
-    
-    # assign accel vs. decel based on where you're at between stopped and steady
-    rawnav_seg_steady_lims = (
-    	rawnav
-        .query('(is_stopped == False) & (is_steady == True)')
-    	.groupby(['filename','index_run_start','stopped_changes'])
-    	.agg(
-            steady_fps_sec_start = ('sec_past_st', 'min'),
-            steady_fps_sec_end = ('sec_past_st', 'max')
-        )
-        .reset_index()
-    )
-
-    # rejoin the lims
-    rawnav = (
-        rawnav
-        # .drop(['steady_fps_sec_start','steady_fps_sec_end'], axis = "columns")
-        .merge(
-            rawnav_seg_steady_lims,
-            on = ['filename','index_run_start','stopped_changes'],
-            how = "left"
-        )
-        .assign(
-            accel_decel = lambda x: 
-                np.select(
-                    [
-                        # these commented parts are overcoding due to earlier type=o
-                    (x.sec_past_st < x.steady_fps_sec_start) & x.is_stopped.eq(False), #& x.basic_decomp.ne('steady'),
-                    (x.sec_past_st > x.steady_fps_sec_end) & x.is_stopped.eq(False) #& x.basic_decomp.ne('steady')
-                    ],
-                    [
-                     "accel",
-                     "decel"
-                    ],
-                    default = np.nan
-                    )
-        )
-    )
-        
-    # assign the decomp
-    rawnav = (
-        rawnav
-        .assign(
-            basic_decomp = lambda x: np.select(
-                [
-                x.is_steady.eq(True),
-                x.accel_decel.ne("nan"), #TODO: i screwed something up
-                x.is_stopped.eq(True),
-                x.is_steady.eq(False) & x.is_stopped.eq(False) & x.accel_decel.eq("nan")
-                ],
-                [
-                "steady",
-                x.accel_decel,
-                "stopped",
-                "other_delay"
-                ]
-            )
-        )
-    )
-    
-    # once no longer debugging, drop these cols
-    # rawnav = (
-    #     rawnav
-    #     .drop([
-    #         "is_stopped",
-    #         "stopped_changes",
-    #         "steady_fps",
-    #         "steady_fps",
-    #         "steady_fps_sec_start",
-    #         "steady_fps_sec_end",
-    #         "accel_decel"
-    #         ],
-    #         axis = "columns"
-    #     )
-    # )
-    
-    return(rawnav)
-        
+# %% interpolation functions
+# despite the name, this is called by interp_sec
 def interp_odom(x, ft_threshold = 1, fix_interp = True):
     # ft_threshold is how far outside the bands of observed odom_ft values we would allow. a little
     # wiggle room probbaly okay given how we understand these integer issues appearing
-    # 
     
     x.set_index(['sec_past_st'], inplace = True)
     
@@ -358,7 +238,7 @@ def interp_odom(x, ft_threshold = 1, fix_interp = True):
         x.reset_index(inplace = True)
         return(x)
 
-def smooth_vals(rawnav):
+def interp_sec(rawnav):
     """
     Parameters
     ----------
@@ -507,6 +387,7 @@ def smooth_vals(rawnav):
             odom_interp_fail = lambda x: np.nan
         )
         .groupby(['filename','index_run_start'])
+        # TODO: we should also probably interpolate heading
         .apply(lambda x: interp_odom(x))
         .reset_index(drop = True)
         .pipe(
@@ -642,7 +523,7 @@ def calc_speed_vals(rawnav):
     return(rawnav)
     
 # %% ROlling vals 
-def calc_rolling_vals2(
+def calc_rolling(
         rawnav,
         groupvars = ['filename','index_run_start']
     ):
@@ -668,6 +549,7 @@ def calc_rolling_vals2(
         )
     )
         
+    # we'll probably remove some of these later
     rawnav[['accel5']] = (
         rawnav
         .groupby(groupvars,sort = False)[['accel_next']]
@@ -698,13 +580,13 @@ def calc_rolling_vals2(
         )
     )
         
-    rawnav[['accel10']] = (
+    rawnav[['accel9']] = (
         rawnav
         .groupby(groupvars,sort = False)[['accel_next']]
         .transform(
             lambda x:
                 x.rolling(
-                    window = '10s', 
+                    window = '9s', 
                     min_periods = 1, 
                     center = True, 
                     win_type = None

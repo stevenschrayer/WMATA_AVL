@@ -128,6 +128,23 @@ test = (
      .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov8_all.csv"))
 )
 
+# uses even more smoothed accel 9 secs and adds the stop type indicator
+test = (
+    rawnav_fil6
+    .query("filename == @testfile & index_run_start == @testindex")
+)
+
+(
+    test
+    .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov9.csv"))
+)
+
+
+(
+    rawnav_fil6
+     .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov9_all.csv"))
+)
+
 
 
 

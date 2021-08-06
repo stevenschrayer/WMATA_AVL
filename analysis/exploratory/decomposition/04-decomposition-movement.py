@@ -96,8 +96,8 @@ rawnav_fil2 = (
 
 rawnav_fil3 = wr.reset_odom(rawnav_fil2)
 
-# this calcs rolling vals and addresses issues
-rawnav_fil4 = wr.smooth_vals(rawnav_fil3)
+# calcs seconds
+rawnav_fil4 = wr.interp_sec(rawnav_fil3)
 
 # quick check of how many pings we will have repeated seconds values
 (rawnav_fil4.shape[0] - rawnav_fil3.shape[0]) / rawnav_fil3.shape[0]
@@ -107,7 +107,7 @@ rawnav_fil5 = wr.calc_speed_vals(rawnav_fil4)
 rawnav_fil6 = (
     rawnav_fil5
      .pipe(
-          wr.decompose_mov2,
+          wr.decompose_mov,
           stopped_fps = 3, #upped from 2
           slow_fps = 14.67, # upped default to 10mph
           steady_accel_thresh = 2, #based on some casual observations
