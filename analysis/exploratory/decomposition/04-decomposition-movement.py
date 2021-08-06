@@ -99,10 +99,10 @@ rawnav_fil3 = wr.reset_odom(rawnav_fil2)
 # this calcs rolling vals and addresses issues
 rawnav_fil4 = wr.smooth_vals(rawnav_fil3)
 
-rawnav_fil5 = wr.calc_rolling_vals2(rawnav_fil4)
-
 # quick check of how many pings we will have repeated seconds values
-(rawnav_fil5.shape[0] - rawnav_fil3.shape[0]) / rawnav_fil3.shape[0]
+(rawnav_fil4.shape[0] - rawnav_fil3.shape[0]) / rawnav_fil3.shape[0]
+
+rawnav_fil5 = wr.calc_speed_vals(rawnav_fil4)
 
 rawnav_fil6 = (
     rawnav_fil5

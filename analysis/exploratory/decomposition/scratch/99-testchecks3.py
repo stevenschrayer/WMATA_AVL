@@ -115,6 +115,18 @@ test = (
 )
 
 
+# uses even more smoothed accel 10 secs, but only applies within window
+(
+    rawnav_fil6
+    .query("filename == @testfile & index_run_start == @testindex")
+    .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov8.csv"))
+)
+
+
+(
+    rawnav_fil6
+     .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov8_all.csv"))
+)
 
 
 

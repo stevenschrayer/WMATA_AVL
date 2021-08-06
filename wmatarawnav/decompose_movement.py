@@ -62,6 +62,9 @@ def decompose_mov2(
     	.transform(lambda x: x.diff().ne(0).cumsum())
     )
     
+    # calc rolling vals only within stop segments
+    rawnav = calc_rolling_vals2(rawnav,['filename','index_run_start','stopped_changes'])
+    
     rawnav = (
         rawnav
         .assign(
@@ -543,7 +546,7 @@ def smooth_vals(rawnav):
     
     return(rawnav)
 
-def calc_rolling_vals2(rawnav):
+def calc_speed_vals(rawnav):
     
     #%% lag values
     rawnav[['odom_ft_next','sec_past_st_next']] = (
@@ -620,93 +623,7 @@ def calc_rolling_vals2(rawnav):
     
     # but now, if you're the last row, we reset you back to np.nan
     rawnav.loc[rawnav.groupby(['filename','index_run_start']).tail(1).index, 'jerk_next'] = np.nan
-        
-    #%% Calculate the smoothed values
-    rawnav = (
-        rawnav
-        .assign(timest = lambda x: pd.to_datetime(x.start_date_time)+ pd.to_timedelta(x.sec_past_st, unit = "s"))
-        .set_index('timest')
-    )
-    
-    # this works
-    rawnav['fps3'] = (
-        rawnav
-        .groupby(['filename','index_run_start'],sort = False)['fps_next']
-        .transform(
-            lambda x:
-                x.rolling(
-                    window = '3s', 
-                    min_periods = 1, 
-                    center = True, 
-                    win_type = None
-                )
-                .mean()
-        )
-    )
-        
-    # this works
-    rawnav[['fps3','accel3','jerk3']] = (
-        rawnav
-        .groupby(['filename','index_run_start'],sort = False)[['fps_next','accel_next','jerk_next']]
-        .transform(
-            lambda x:
-                x.rolling(
-                    window = '3s', 
-                    min_periods = 1, 
-                    center = True, 
-                    win_type = None
-                )
-                .mean()
-        )
-    )
-        
-    rawnav[['accel5']] = (
-        rawnav
-        .groupby(['filename','index_run_start'],sort = False)[['accel_next']]
-        .transform(
-            lambda x:
-                x.rolling(
-                    window = '5s', 
-                    min_periods = 1, 
-                    center = True, 
-                    win_type = None
-                )
-                .mean()
-        )
-    )
-        
-    rawnav[['accel7']] = (
-        rawnav
-        .groupby(['filename','index_run_start'],sort = False)[['accel_next']]
-        .transform(
-            lambda x:
-                x.rolling(
-                    window = '7s', 
-                    min_periods = 1, 
-                    center = True, 
-                    win_type = None
-                )
-                .mean()
-        )
-    )
-        
-    rawnav[['accel10']] = (
-        rawnav
-        .groupby(['filename','index_run_start'],sort = False)[['accel_next']]
-        .transform(
-            lambda x:
-                x.rolling(
-                    window = '10s', 
-                    min_periods = 1, 
-                    center = True, 
-                    win_type = None
-                )
-                .mean()
-        )
-    )
-        
-    rawnav.reset_index(inplace = True, drop = True)
-    
+           
     
     #%% Cleanup
     # drop some leftover cols
@@ -724,3 +641,78 @@ def calc_rolling_vals2(rawnav):
     
     return(rawnav)
     
+# %% ROlling vals 
+def calc_rolling_vals2(
+        rawnav,
+        groupvars = ['filename','index_run_start']
+    ):
+    rawnav = (
+        rawnav
+        .assign(timest = lambda x: pd.to_datetime(x.start_date_time)+ pd.to_timedelta(x.sec_past_st, unit = "s"))
+        .set_index('timest')
+    )
+        
+    # this works
+    rawnav[['fps3','accel3','jerk3']] = (
+        rawnav
+        .groupby(groupvars,sort = False)[['fps_next','accel_next','jerk_next']]
+        .transform(
+            lambda x:
+                x.rolling(
+                    window = '3s', 
+                    min_periods = 1, 
+                    center = True, 
+                    win_type = None
+                )
+                .mean()
+        )
+    )
+        
+    rawnav[['accel5']] = (
+        rawnav
+        .groupby(groupvars,sort = False)[['accel_next']]
+        .transform(
+            lambda x:
+                x.rolling(
+                    window = '5s', 
+                    min_periods = 1, 
+                    center = True, 
+                    win_type = None
+                )
+                .mean()
+        )
+    )
+        
+    rawnav[['accel7']] = (
+        rawnav
+        .groupby(groupvars,sort = False)[['accel_next']]
+        .transform(
+            lambda x:
+                x.rolling(
+                    window = '7s', 
+                    min_periods = 1, 
+                    center = True, 
+                    win_type = None
+                )
+                .mean()
+        )
+    )
+        
+    rawnav[['accel10']] = (
+        rawnav
+        .groupby(groupvars,sort = False)[['accel_next']]
+        .transform(
+            lambda x:
+                x.rolling(
+                    window = '10s', 
+                    min_periods = 1, 
+                    center = True, 
+                    win_type = None
+                )
+                .mean()
+        )
+    )
+        
+    rawnav.reset_index(inplace = True, drop = True)
+    
+    return(rawnav)
