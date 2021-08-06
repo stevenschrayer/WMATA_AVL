@@ -93,3 +93,30 @@ test = (
 )
 
 
+# this updates the smoothed values further
+(
+    rawnav_fil6
+    .query("filename == @testfile & index_run_start == @testindex")
+    .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov6.csv"))
+)
+
+
+(
+    rawnav_fil6
+     .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov6_all.csv"))
+)
+
+
+# uses even more smoothed accel 10 secs
+(
+    rawnav_fil6
+    .query("filename == @testfile & index_run_start == @testindex")
+    .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov7.csv"))
+)
+
+
+
+
+
+
+

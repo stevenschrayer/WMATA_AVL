@@ -71,7 +71,7 @@ def decompose_mov2(
                 (x.fps3.ge(slow)) & 
                 (x.is_stopped.eq(False)) & 
                 # new accel condition
-                ((x.accel3 > -thresh) & (x.accel3 < thresh))
+                ((x.accel10 > -thresh) & (x.accel10 < thresh))
         )
     )
     
@@ -652,6 +652,51 @@ def calc_rolling_vals2(rawnav):
             lambda x:
                 x.rolling(
                     window = '3s', 
+                    min_periods = 1, 
+                    center = True, 
+                    win_type = None
+                )
+                .mean()
+        )
+    )
+        
+    rawnav[['accel5']] = (
+        rawnav
+        .groupby(['filename','index_run_start'],sort = False)[['accel_next']]
+        .transform(
+            lambda x:
+                x.rolling(
+                    window = '5s', 
+                    min_periods = 1, 
+                    center = True, 
+                    win_type = None
+                )
+                .mean()
+        )
+    )
+        
+    rawnav[['accel7']] = (
+        rawnav
+        .groupby(['filename','index_run_start'],sort = False)[['accel_next']]
+        .transform(
+            lambda x:
+                x.rolling(
+                    window = '7s', 
+                    min_periods = 1, 
+                    center = True, 
+                    win_type = None
+                )
+                .mean()
+        )
+    )
+        
+    rawnav[['accel10']] = (
+        rawnav
+        .groupby(['filename','index_run_start'],sort = False)[['accel_next']]
+        .transform(
+            lambda x:
+                x.rolling(
+                    window = '10s', 
                     min_periods = 1, 
                     center = True, 
                     win_type = None
