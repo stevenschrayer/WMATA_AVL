@@ -35,12 +35,22 @@ rawnav_decomp_all <-
 # Figures
 Raw data
 ```{r, fig.width=6, fig.height=4}
-plot_rawnav(rawnav_1, accel_next, odom_min = 13577, odom_max = 14201)
+ping_raw <- plot_rawnav(rawnav_1, fps_next, odom_min = 13577, odom_max = 14201)
 ```
 after aggregation and interpolation
 ```{r, fig.width=6, fig.height=4}
-plot_rawnav(rawnav_decomp, accel_next, odom_min = 13577, odom_max = 14201)
+ping_fixed <- plot_rawnav(rawnav_decomp, fps_next, odom_min = 13577, odom_max = 14201)
 ```
+
+```{r}
+subplot(
+  ping_raw,
+  ping_fixed
+)
+```
+
+
+
 Accel graphs
 
 ```{r, fig.width=6, fig.height=4}
@@ -127,7 +137,7 @@ chart_data <-
   ) 
 ```
 
-```{r}
+```{r, fig.width=6, fig.height=4}
 g <- 
 chart_data %>%
   ggplot() +
@@ -253,7 +263,7 @@ odom_chart <-
 
 ```
 
-```{r}
+```{r, fig.width=6, fig.height=4}
 odom_chart(rawnav_decomp_fit,1000) %>% ggplotly()
 
 ```
