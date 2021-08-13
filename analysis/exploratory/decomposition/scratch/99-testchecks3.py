@@ -140,12 +140,22 @@ test = (
 )
 
 
+
+
+# these update to have the stop area decomp and a few more areas of odom interpolation
 (
-    rawnav_fil6
-     .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov9_all.csv"))
+    rawnav_fil7
+    .query('filename == @testfile & index_run_start == @testindex')
+    .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov10.csv"))
 )
 
+(
+    rawnav_fil7
+    .to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov10_all.csv"))
+)
 
+# after doing smoothed from start to finish, new accel calcs
+rawnav_fil8.to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov11.csv"))
 
-
+rawnav_fil8.to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov11_all.csv"))
 

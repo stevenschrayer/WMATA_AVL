@@ -8,11 +8,12 @@ import pandas as pd
 import numpy as np
 from . import low_level_fns as ll
 from . import decompose_rawnav as dr
+from math import factorial
 
 # we'll use this to just identify what the heck the bus is doing at any particular
 # point in time.
 
-# %% cleanup functions
+#### cleanup functions
 
 def reset_odom(
     rawnav,
@@ -37,6 +38,7 @@ def reset_odom(
     
     return(rawnav)
 
+#### Decomposition
 def decompose_mov(
     rawnav,
     slow_fps = 14.67, # upped default to 10mph
@@ -44,7 +46,7 @@ def decompose_mov(
     stopped_fps = 3): 
     # our goal here is to get to accel/decel/steady state 
     
-    # %% Categorize stopped movement
+    #### Categorize stopped movement
     # JACK: you may want to steal next few chunks
     # for now, not distinguishing slow
     rawnav = (
@@ -55,30 +57,34 @@ def decompose_mov(
         )
     )
     
-    #%% categorize groups
+    # TODO: consider overriding is_stopped if the door opens. These are probably cases where the
+    # vehicle did stop for a moment 
+    # or at the very least, test that we don't have these cases in the decomposition.
+    
+    
+    #### categorize groups
     rawnav['stopped_changes'] = (
     	rawnav
     	.groupby(['filename','index_run_start'])['is_stopped']
     	.transform(lambda x: x.diff().ne(0).cumsum())
     )
     
-    #%% calc rolling vals only within stop segments
+    #### calc rolling vals only within stop segments
+    # TODO: I think this is kind of unnecessary, actually. We need to calc some of these 
+    # values sooner for data cleaning, so better to do it outside the decomp function
     rawnav = calc_rolling(rawnav,['filename','index_run_start','stopped_changes'])
     
     rawnav = (
         rawnav
         .assign(
             is_steady = lambda x, thresh = steady_accel_thresh, slow = slow_fps: 
-                # seems like the low percentile on steady could catch part of accel phase,
-                 # may want to add more conditions here later
                 (x.fps3.ge(slow)) & 
                 (x.is_stopped.eq(False)) & 
-                # new accel condition
                 ((x.accel9 > -thresh) & (x.accel9 < thresh))
         )
     )
     
-    # %% Identify if stopped for pax
+    #### Identify if stopped for pax
     # TODO: this approach is only so-so for cases where the bus pulls forward slowly
     # then stops again
     rawnav = (
@@ -93,8 +99,76 @@ def decompose_mov(
         .groupby(['filename','index_run_start','stopped_changes'])['door_state_closed']
         .transform(lambda x: any(~x))       
     )
+    
+    # TODO: need to do the case where door opens, then bus edges forward just a smidge
+    
+    # distinguish dwell types
+    # dwell_init is first door open to first door close
+    # dwell_add is remaining time until last door close; includes some time where the doors are
+    # closed, but is a litle more generous. This is what metrotransit uses, but i don't think 
+    # we'll end up using this.
+    # maybe we make this a function argument
+    
+    # we apply this to all groups, including those where the bus is moving
+    # TODO: write test on how often door changes happen outside of stop areas
+    rawnav['door_changes'] = (
+        rawnav
+        .groupby(['filename','index_run_start','stopped_changes'])['door_state_closed']
+        .transform(
+            lambda x: x.diff().ne(0).cumsum()
+            )
+    )
+    
+    # next, we find where the min and max observation of a door change is, similar to what 
+    # we'll do for steady state in a bit. In R we could just stick to grouped operations,
+    # but here it's easier to summarize and then rejoin.
+    door_open_lims = (
+        rawnav
+        .loc[
+            rawnav.is_stopped & ~rawnav.door_state_closed
+        ]
+        .groupby(['filename','index_run_start','stopped_changes'])
+        .agg(
+            door_open_min = ('door_changes','min'),
+            door_open_max = ('door_changes','max')
+        )
+    )
+    
+    # TODO: i'm not really sure how best to incorporate this into further into the decomp
+    # i think for now, it's more important to just do this breakdown, maybe later 
+    # do something more with it.
+    # TODO: maybe i should use the APC tags here too? Maybe we should go from first to last 
+    # APC tag?
+    rawnav = (
+        rawnav       
+        .merge(
+            door_open_lims,
+            on = ['filename','index_run_start','stopped_changes'],
+            how = 'left'
+        )
+        .assign(
+            stop_decomp = lambda x: np.select(
+                [
+                    x.door_state.eq('C') & x.door_changes.le(x.door_open_min),
+                    x.door_state.eq('O') & x.door_changes.eq(x.door_open_min),
+                    x.door_changes.gt(x.door_open_min) & x.door_changes.le(x.door_open_max),
+                    x.door_changes.gt(x.door_open_max),
+                    x.door_state.eq('C') & ~x.is_stopped
+                ],
+                [
+                    "stop_init",
+                    "dwell_init",
+                    "dwell_addl",
+                    "stop_addl",
+                    np.nan
+                ],
+                default = np.nan            
+            )    
+        )
+    )
+
         
-    # %% Calculate steady state
+    #### Calculate where steady state begins/ends, accel and decel phases
     rawnav_seg_steady_lims = (
     	rawnav
         .query('(is_stopped == False) & (is_steady == True)')
@@ -132,7 +206,11 @@ def decompose_mov(
         )
     )
         
-    # %% assign the decomp
+    #### Add stop-area door state items
+    
+        
+    #### assign the decomp
+    # Note, for now this isn't including what's happening within the stop area
     rawnav = (
         rawnav
         .assign(
@@ -154,10 +232,9 @@ def decompose_mov(
             )
         )
     )
-    
 
-    # %% cleanup
-    # once no longer debugging, drop these cols
+    ####  cleanup
+    # TODO:  once no longer debugging, drop these cols or whatever else that were problematic 
     # rawnav = (
     #     rawnav
     #     .drop([
@@ -175,9 +252,9 @@ def decompose_mov(
     
     return(rawnav)
         
-# %% interpolation functions
-# despite the name, this is called by interp_sec
-def interp_odom(x, ft_threshold = 1, fix_interp = True):
+#### interpolation functions
+# despite the name, this is called by interp_over_sec
+def interp_odom(x, ft_threshold = 1, fix_interp = True, interp_method = "index"):
     # ft_threshold is how far outside the bands of observed odom_ft values we would allow. a little
     # wiggle room probbaly okay given how we understand these integer issues appearing
     
@@ -187,8 +264,7 @@ def interp_odom(x, ft_threshold = 1, fix_interp = True):
         raise ValueError("sec_past_st shouldn't be duplicated at this point")
     else:
         # interpolate
-        # TODO: add options for different interpolation options
-        x.odom_ft = x.odom_ft.interpolate(method = "index")
+        x.odom_ft = x.odom_ft.interpolate(method = interp_method)
         
         # test
         # Could probably fix some of this, but oh well
@@ -238,24 +314,16 @@ def interp_odom(x, ft_threshold = 1, fix_interp = True):
         x.reset_index(inplace = True)
         return(x)
 
-def interp_sec(rawnav):
+def agg_sec(rawnav):
     """
     Parameters
     ----------
     rawnav: pd.DataFrame, rawnav data. Expect cols sec_past_st and odom_ft
-    groupvars: list of column names. 
     Returns
     -------
-    rawnav_add: pd.DataFrame, rawnav data with additional fields.
+    rawnav: pd.DataFrame, rawnav data with additional fields.
     Notes
     -----
-    Because wmatarawnav functions generally leave source rawnav data untouched except 
-    just prior to the point of analysis, these calculations may be performed several times
-    on smaller chunks of data. We group by stop_id in addition to run in case a segment has 
-    multiple stops in it (e.g., Georgia & Irving)
-    
-    By default calculations are grouped by run, but in certain phases of data processing, it
-    can be appropriate to group by run and stop.
     """
     
     # Grouping everything is pretty slow, so we'll split out the repeated second cases, fix
@@ -280,7 +348,9 @@ def interp_sec(rawnav):
                     x.stop_window.str.contains('E'),
                     x.stop_window,
                     None
-                )
+                ),
+            # placeholder we'll update later
+            collapsed_rows = 1
         )
     )
      
@@ -324,6 +394,8 @@ def interp_sec(rawnav):
             # if it does, will be in a world of pain.
             # this join works better when we expect every row to be filled
             veh_state = ('veh_state', lambda x: ','.join(x.unique().astype(str))),
+            # we'll impute this later, but for now, we just fill
+            odom_ft = ('odom_ft','last'),
             odom_ft_min = ('odom_ft','min'),
             odom_ft_max = ('odom_ft','max'),
             sat_cnt = ('sat_cnt','last'),
@@ -340,6 +412,7 @@ def interp_sec(rawnav):
             blank = ('blank', lambda x: ','.join(x.unique().astype(int).astype(str))),
             lat_raw = ('lat_raw','last'),
             long_raw = ('long_raw','last'),
+            # TODO: possible we don't want to collapse this...
             row_before_apc = ('row_before_apc', lambda x: ','.join(x.unique().astype(int).astype(str))),
             collapsed_rows = ('index_loc','count')
         )
@@ -378,18 +451,6 @@ def interp_sec(rawnav):
     # set to NA and interpolate
     rawnav = (
         rawnav
-        .assign(
-            odom_ft = lambda x: np.where(
-                x.collapsed_rows.isna(),
-                x.odom_ft,
-                np.nan
-            ),
-            odom_interp_fail = lambda x: np.nan
-        )
-        .groupby(['filename','index_run_start'])
-        # TODO: we should also probably interpolate heading
-        .apply(lambda x: interp_odom(x))
-        .reset_index(drop = True)
         .pipe(
             # Should have done this sooner, but definitely necessary after these aggregations
             ll.reorder_first_cols,
@@ -416,7 +477,6 @@ def interp_sec(rawnav):
              'collapsed_rows',
              'odom_ft_min',
              'odom_ft_max',
-             'odom_interp_fail',
              'door_state_all',
              'stop_window_e',
              'stop_window_x',
@@ -427,16 +487,95 @@ def interp_sec(rawnav):
     
     return(rawnav)
 
-def calc_speed_vals(rawnav):
+def interp_over_sec(rawnav, interp_method = "index"):
     
-    #%% lag values
+    #### first, set as NA the values that we plan to interpolate over.
+    # TODO: In the future, we probably will not want to be dropping data,
+    # it's a bit sloppy. For now there are some known 'bad' values and it's a little
+    # bit easier to just get rid of them and linearly interpolate since we're only looking
+    # at a few cases.
+    
+    # first, we look for ones that have one missing second afterwards but have one second before
+    # for various reasons, these odometers tend to come out high
+    rawnav['sec_past_st_next'] = (
+        rawnav
+        .groupby(['filename','index_run_start'], sort = False)['sec_past_st']
+        .shift(-1)
+    )
+    
+    rawnav['sec_past_st_lag'] = (
+        rawnav
+        .groupby(['filename','index_run_start'], sort = False)['sec_past_st']
+        .shift(1)
+    )
+    
+    rawnav = (
+        rawnav
+        .assign(
+            secs_next = lambda x: x.sec_past_st_next - x.sec_past_st,
+            secs_last = lambda x: x.sec_past_st - x.sec_past_st_lag
+        )
+        .assign(
+            odom_ft = lambda x: np.where(
+                x.secs_next.eq(2) & x.secs_last.eq(1),
+                np.nan,
+                x.odom_ft
+            )    
+        )
+    )
+    
+     # where we collapsed, let's NA these out for interpolate
+     # if the repeated values are the same, we should probably not NA these out
+    rawnav = (
+        rawnav
+        .assign(
+            odom_ft = lambda x: np.where(
+                x.collapsed_rows.eq(1),
+                x.odom_ft,
+                np.nan
+            ),
+            odom_interp_fail = lambda x: np.nan
+        )
+    )
+        
+    #### interpolate the odom values 
+    rawnav = (
+        rawnav
+        .groupby(['filename','index_run_start'])
+        # TODO: we should also probably interpolate heading
+        .apply(lambda x: interp_odom(x, interp_method = interp_method))
+        .reset_index(drop = True)
+    ) 
+        
+    
+    #### Clean up
+    
+    rawnav = (
+        rawnav
+        .drop(
+            [
+            'sec_past_st_next',
+            'sec_past_st_lag',
+            'secs_next',
+            'secs_last',
+            'odom_interp_fail'
+            ],
+            axis = "columns"
+        )
+    )
+    
+    return(rawnav)
+
+def calc_speed(rawnav):
+    
+    #### lag values
     rawnav[['odom_ft_next','sec_past_st_next']] = (
         rawnav
         .groupby(['filename','index_run_start'], sort = False)[['odom_ft','sec_past_st']]
         .transform(lambda x: x.shift(-1))
     )
     
-    #%% Calculate FPS
+    #### calculate FPS
     rawnav = (
         rawnav
         .assign(
@@ -454,11 +593,24 @@ def calc_speed_vals(rawnav):
         
     # if you're the last row , we reset you back to np.nan
     rawnav.loc[rawnav.groupby(['filename','index_run_start']).tail(1).index, 'fps_next'] = np.nan
+
+    return(rawnav)
     
-    #%% Calculate acceleration
-    rawnav[['fps_next_lag']] = (
+def calc_accel_jerk(rawnav, groupvars = ['filename','index_run_start'], fps_col = 'fps_next'):
+    # a little inefficient to recalculate this, but we're tryign to call this within the exapnded
+    # data as well.
+    rawnav['sec_past_st_next'] = (
         rawnav
-        .groupby(['filename','index_run_start'], sort = False)[['fps_next']]
+        .groupby(groupvars, sort = False)['sec_past_st']
+        .shift(-1)
+    )
+    
+    fps_lag_col = fps_col + "_lag"
+    
+    #### Calculate acceleration
+    rawnav[[fps_lag_col]] = (
+        rawnav
+        .groupby(groupvars, sort = False)[[fps_col]]
         .transform(lambda x: x.shift(1))
     )
 
@@ -472,7 +624,7 @@ def calc_speed_vals(rawnav):
             # accel_next is also a bit of a misnomer; more like accel_at_point, 
             # because some downstream/notebook code depends on accel_next, sticking to that
             # nomenclature for now
-            accel_next = lambda x: (x.fps_next - x.fps_next_lag) / (x.sec_past_st_next - x.sec_past_st),
+            accel_next = lambda x: (x[fps_col]- x[fps_lag_col]) / (x.sec_past_st_next - x.sec_past_st),
         )
         # as before, we'll set these cases to nan and then fill
          .assign(
@@ -481,13 +633,12 @@ def calc_speed_vals(rawnav):
     )
     
     # but now, if you're the last row, we reset you back to np.nan
-    rawnav.loc[rawnav.groupby(['filename','index_run_start']).tail(1).index, 'accel_next'] = np.nan
+    rawnav.loc[rawnav.groupby(groupvars).tail(1).index, 'accel_next'] = np.nan
     
-    #%% Calculate Jerk
-    # TODO: Look into derivative of acceleration (jerk)? might address some smoothing issues
+    #### Calculate Jerk
     rawnav[['accel_next_lag']] = (
         rawnav
-        .groupby(['filename','index_run_start'], sort = False)[['accel_next']]
+        .groupby(groupvars, sort = False)[['accel_next']]
         .transform(lambda x: x.shift(1))
     )
     
@@ -503,17 +654,15 @@ def calc_speed_vals(rawnav):
     )
     
     # but now, if you're the last row, we reset you back to np.nan
-    rawnav.loc[rawnav.groupby(['filename','index_run_start']).tail(1).index, 'jerk_next'] = np.nan
-           
-    
-    #%% Cleanup
+    rawnav.loc[rawnav.groupby(groupvars).tail(1).index, 'jerk_next'] = np.nan
+         
+    #### Cleanup
     # drop some leftover cols
     rawnav = (
         rawnav
         .drop([
-            'odom_ft_next',
+            fps_lag_col,
             'sec_past_st_next',
-            'fps_next_lag',
             'accel_next_lag'
             ],
             axis = "columns"
@@ -522,7 +671,179 @@ def calc_speed_vals(rawnav):
     
     return(rawnav)
     
-# %% ROlling vals 
+
+#### Speed Calcs
+
+# borrowed from : https://scipy-cookbook.readthedocs.io/items/SavitzkyGolay.html
+# and inspired by https://stackoverflow.com/questions/20618804/how-to-smooth-a-curve-in-the-right-way
+def savitzky_golay(y, window_size, order, deriv=0, rate=1):
+    r"""Smooth (and optionally differentiate) data with a Savitzky-Golay filter.
+    The Savitzky-Golay filter removes high frequency noise from data.
+    It has the advantage of preserving the original shape and
+    features of the signal better than other types of filtering
+    approaches, such as moving averages techniques.
+    Parameters
+    ----------
+    y : array_like, shape (N,)
+        the values of the time history of the signal.
+    window_size : int
+        the length of the window. Must be an odd integer number.
+    order : int
+        the order of the polynomial used in the filtering.
+        Must be less then `window_size` - 1.
+    deriv: int
+        the order of the derivative to compute (default = 0 means only smoothing)
+    Returns
+    -------
+    ys : ndarray, shape (N)
+        the smoothed signal (or it's n-th derivative).
+    Notes
+    -----
+    The Savitzky-Golay is a type of low-pass filter, particularly
+    suited for smoothing noisy data. The main idea behind this
+    approach is to make for each point a least-square fit with a
+    polynomial of high order over a odd-sized window centered at
+    the point.
+    Examples
+    --------
+    t = np.linspace(-4, 4, 500)
+    y = np.exp( -t**2 ) + np.random.normal(0, 0.05, t.shape)
+    ysg = savitzky_golay(y, window_size=31, order=4)
+    import matplotlib.pyplot as plt
+    plt.plot(t, y, label='Noisy signal')
+    plt.plot(t, np.exp(-t**2), 'k', lw=1.5, label='Original signal')
+    plt.plot(t, ysg, 'r', label='Filtered signal')
+    plt.legend()
+    plt.show()
+    References
+    ----------
+    .. [1] A. Savitzky, M. J. E. Golay, Smoothing and Differentiation of
+       Data by Simplified Least Squares Procedures. Analytical
+       Chemistry, 1964, 36 (8), pp 1627-1639.
+    .. [2] Numerical Recipes 3rd Edition: The Art of Scientific Computing
+       W.H. Press, S.A. Teukolsky, W.T. Vetterling, B.P. Flannery
+       Cambridge University Press ISBN-13: 9780521880688
+    """
+
+    
+    try:
+        window_size = np.abs(int(window_size))
+        order = np.abs(int(order))
+    except ValueError: # minor modification in this line
+        raise ValueError("window_size and order have to be of type int")
+    if window_size % 2 != 1 or window_size < 1:
+        raise TypeError("window_size size must be a positive odd number")
+    if window_size < order + 2:
+        raise TypeError("window_size is too small for the polynomials order")
+    order_range = range(order+1)
+    half_window = (window_size -1) // 2
+    # precompute coefficients
+    b = np.mat([[k**i for i in order_range] for k in range(-half_window, half_window+1)])
+    m = np.linalg.pinv(b).A[deriv] * rate**deriv * factorial(deriv)
+    # pad the signal at the extremes with
+    # values taken from the signal itself
+    firstvals = y[0] - np.abs( y[1:half_window+1][::-1] - y[0] )
+    lastvals = y[-1] + np.abs(y[-half_window-1:-1][::-1] - y[-1])
+    y = np.concatenate((firstvals, y, lastvals))
+    return np.convolve( m[::-1], y, mode='valid')
+
+def expand_rawnav(rawnav_ti):
+    
+    rawnav_ti_expand = (
+        pd.DataFrame(
+            {'sec_past_st': np.arange(rawnav_ti.sec_past_st.min(), rawnav_ti.sec_past_st.max(),1 )} 
+        )
+        .merge(
+             rawnav_ti[['sec_past_st','fps_next']],
+             on = 'sec_past_st',
+             how = 'left'
+        )
+        .assign(
+            fps_next = lambda x: x.fps_next.ffill(),
+        )
+    )
+    
+    return(rawnav_ti_expand)
+
+# TODO: consider an approach that will let us smooth other things too
+# for each trip instance, this expands the data, applies the savitzy golay method, and 
+# recalculates accel and jerk
+def apply_smooth(rawnav_ti):
+    rawnav_ex = expand_rawnav(rawnav_ti)
+    
+    rawnav_ex['fps_next_sm'] = savitzky_golay(rawnav_ex.fps_next.to_numpy(), 21, 3)    
+    
+    rawnav_ex = (
+        rawnav_ex
+        .assign(
+            fps_next_sm = lambda x: np.where(
+                x.fps_next_sm.le(0),
+                0,
+                x.fps_next_sm
+            )    
+        )    
+    )
+    
+    rawnav_ex = (
+        rawnav_ex
+        # a little hack to shortcut the need to group, since we're doing all this by trip 
+        # instance
+        .assign(grp = 1)
+        .pipe(
+            calc_accel_jerk,
+            groupvars = ['grp'], 
+            fps_col = 'fps_next_sm'
+        )
+        .drop(['grp'], axis = 'columns')
+    )
+        
+    rawnav_ti = pd.merge(
+        rawnav_ti
+        # drop the placeholder columns
+        .drop(
+            ['fps_next_sm',
+             'accel_next',
+             'jerk_next'
+             ],
+            axis = 'columns'
+        ),
+        rawnav_ex
+        .drop(
+            ['fps_next'],
+            axis = "columns"
+        ),
+        on = ['sec_past_st'],
+        how = 'left'
+    )
+
+    return(rawnav_ti)
+
+# this is a parent function that handles some placeholder column creation, gropuing, and applying
+# the smoothing function
+def smooth_speed(rawnav):
+    
+    # this requires interpolated data, according to internet
+    # https://gis.stackexchange.com/questions/173721/reconstructing-modis-time-series-applying-savitzky-golay-filter-with-python-nump
+    
+    rawnav = (
+        rawnav
+        .assign(
+            # i'm not sure if these placeholders are necessary or not
+            fps_next_sm = np.nan,
+            accel_next = np.nan,
+            jerk_next = np.nan
+        )
+        .groupby(['filename','index_run_start'],sort = False)
+        .apply(
+            lambda x: apply_smooth(x)
+        )
+        # i'm not sure how the index changes, but oh well
+        .reset_index(drop = True)
+    )
+    
+    return(rawnav)
+    
+
 def calc_rolling(
         rawnav,
         groupvars = ['filename','index_run_start']
@@ -536,7 +857,7 @@ def calc_rolling(
     # this works
     rawnav[['fps3','accel3','jerk3']] = (
         rawnav
-        .groupby(groupvars,sort = False)[['fps_next','accel_next','jerk_next']]
+        .groupby(groupvars,sort = False)[['fps_next_sm','accel_next','jerk_next']]
         .transform(
             lambda x:
                 x.rolling(

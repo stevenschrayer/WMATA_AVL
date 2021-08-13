@@ -96,21 +96,33 @@ rawnav_fil2 = (
 
 rawnav_fil3 = wr.reset_odom(rawnav_fil2)
 
-# calcs seconds
-rawnav_fil4 = wr.interp_sec(rawnav_fil3)
+# aggregate so we only have one observation for each second
+rawnav_fil4 = wr.agg_sec(rawnav_fil3)
 
 # quick check of how many pings we will have repeated seconds values
 (rawnav_fil4.shape[0] - rawnav_fil3.shape[0]) / rawnav_fil3.shape[0]
 
-rawnav_fil5 = wr.calc_speed_vals(rawnav_fil4)
+# This is a separate step again; there are some places where we'll want to interpolate that
+# aren't just the ones where we aggregated seconds. In general, we'll probably want to 
+# revisit the aggregation/interpolation process, so I'm going to try not to touch this too much
+# more for now.
+rawnav_fil5 = wr.interp_over_sec(rawnav_fil4)
 
-rawnav_fil6 = (
-    rawnav_fil5
-     .pipe(
+# these are not the rolling vals, though i think we will want to include those before long.
+rawnav_fil6 = wr.calc_speed(rawnav_fil5)
+
+rawnav_fil7 = wr.smooth_speed(rawnav_fil6)
+
+# TODO: insert joins of stop locations here
+
+# Add in the decomposition
+rawnav_fil8 = (
+    rawnav_fil7
+    .pipe(
           wr.decompose_mov,
           stopped_fps = 3, #upped from 2
           slow_fps = 14.67, # upped default to 10mph
           steady_accel_thresh = 2, #based on some casual observations
-      )
+     )
 )
 
