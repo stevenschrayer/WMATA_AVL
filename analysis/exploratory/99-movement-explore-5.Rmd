@@ -150,7 +150,7 @@ plot_rawnav <-
         ) +
         guides(color=guide_legend(title=thetitle))
       
-    } if (rlang::as_label(var) == "basic_decomp"){
+    } else if (rlang::as_label(var) == "basic_decomp"){
       g <-
         g +
         scale_color_manual(
