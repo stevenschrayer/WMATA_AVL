@@ -235,7 +235,7 @@ def agg_sec(rawnav):
              'heading',
              'door_state',
              'veh_state',
-             'row_before_apc',
+#             'row_before_apc',
              'lat',
              'long',
 #             'lat_raw',
