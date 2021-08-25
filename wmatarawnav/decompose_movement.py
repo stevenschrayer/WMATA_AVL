@@ -53,23 +53,30 @@ def decompose_mov(
         rawnav
         .assign(
             # need a True/False that's easily coercible to numeric
-            is_stopped = lambda x, stop = stopped_fps: x.fps_next.le(stop)
+            # TODO: consider overriding is_stopped if the door opens. These are probably cases where the
+            # vehicle did stop for a moment 
+            # or at the very least, test that we don't have these cases in the decomposition.
+            is_stopped = lambda x, stop = stopped_fps: (x.fps_next.le(stop) | x.door_state.eq("O"))
+        )
+        .assign(
+            veh_state_calc = lambda x: 
+                np.where(
+                    x.is_stopped.eq(True),
+                    "S",
+                    "M"
+                )
         )
     )
     
-    # TODO: consider overriding is_stopped if the door opens. These are probably cases where the
-    # vehicle did stop for a moment 
-    # or at the very least, test that we don't have these cases in the decomposition.
-    
-    
-    #### categorize groups
+
+    #### Categorize stop groups
     rawnav['stopped_changes'] = (
     	rawnav
     	.groupby(['filename','index_run_start'])['is_stopped']
     	.transform(lambda x: x.diff().ne(0).cumsum())
     )
     
-    #### calc rolling vals only within stop segments
+    #### Calc rolling vals only within stop segments
     # TODO: I think this is kind of unnecessary, actually. We need to calc some of these 
     # values sooner for data cleaning, so better to do it outside the decomp function
     rawnav = calc_rolling(rawnav,['filename','index_run_start','stopped_changes'])
@@ -84,90 +91,7 @@ def decompose_mov(
         )
     )
     
-    #### Identify if stopped for pax
-    # TODO: this approach is only so-so for cases where the bus pulls forward slowly
-    # then stops again
-    rawnav = (
-        rawnav
-        .assign(
-            door_state_closed=lambda x: x.door_state == "C",
-        )
-    )
-    
-    rawnav['any_door_open'] = (
-        rawnav
-        .groupby(['filename','index_run_start','stopped_changes'])['door_state_closed']
-        .transform(lambda x: any(~x))       
-    )
-    
-    # TODO: need to do the case where door opens, then bus edges forward just a smidge
-    
-    # distinguish dwell types
-    # dwell_init is first door open to first door close
-    # dwell_add is remaining time until last door close; includes some time where the doors are
-    # closed, but is a litle more generous. This is what metrotransit uses, but i don't think 
-    # we'll end up using this.
-    # maybe we make this a function argument
-    
-    # we apply this to all groups, including those where the bus is moving
-    # TODO: write test on how often door changes happen outside of stop areas
-    rawnav['door_changes'] = (
-        rawnav
-        .groupby(['filename','index_run_start','stopped_changes'])['door_state_closed']
-        .transform(
-            lambda x: x.diff().ne(0).cumsum()
-            )
-    )
-    
-    # next, we find where the min and max observation of a door change is, similar to what 
-    # we'll do for steady state in a bit. In R we could just stick to grouped operations,
-    # but here it's easier to summarize and then rejoin.
-    door_open_lims = (
-        rawnav
-        .loc[
-            rawnav.is_stopped & ~rawnav.door_state_closed
-        ]
-        .groupby(['filename','index_run_start','stopped_changes'])
-        .agg(
-            door_open_min = ('door_changes','min'),
-            door_open_max = ('door_changes','max')
-        )
-    )
-    
-    # TODO: i'm not really sure how best to incorporate this into further into the decomp
-    # i think for now, it's more important to just do this breakdown, maybe later 
-    # do something more with it.
-    # TODO: maybe i should use the APC tags here too? Maybe we should go from first to last 
-    # APC tag?
-    rawnav = (
-        rawnav       
-        .merge(
-            door_open_lims,
-            on = ['filename','index_run_start','stopped_changes'],
-            how = 'left'
-        )
-        .assign(
-            stop_decomp = lambda x: np.select(
-                [
-                    x.door_state.eq('C') & x.door_changes.le(x.door_open_min),
-                    x.door_state.eq('O') & x.door_changes.eq(x.door_open_min),
-                    x.door_changes.gt(x.door_open_min) & x.door_changes.le(x.door_open_max),
-                    x.door_changes.gt(x.door_open_max),
-                    x.door_state.eq('C') & ~x.is_stopped
-                ],
-                [
-                    "stop_init",
-                    "dwell_init",
-                    "dwell_addl",
-                    "stop_addl",
-                    np.nan
-                ],
-                default = np.nan            
-            )    
-        )
-    )
-
-        
+   
     #### Calculate where steady state begins/ends, accel and decel phases
     rawnav_seg_steady_lims = (
     	rawnav
@@ -180,7 +104,9 @@ def decompose_mov(
         .reset_index()
     )
 
+    #### Identify Accel, Decel, and other delays
     # rejoin the lims
+    # anything else becomes accel, decel, or other
     rawnav = (
         rawnav
         .merge(
@@ -193,62 +119,277 @@ def decompose_mov(
                 np.select(
                     [
                     (x.sec_past_st < x.steady_fps_sec_start) & x.is_stopped.eq(False), 
-                    (x.sec_past_st > x.steady_fps_sec_end) & x.is_stopped.eq(False),
-                    x.steady_fps_sec_start.isna()
+                    (x.sec_past_st > x.steady_fps_sec_end) & x.is_stopped.eq(False)
                     ],
                     [
                      "accel",
-                     "decel",
-                     "other_delay"
+                     "decel"
                     ],
-                    default = np.nan
-                    )
+                    default = pd.NA
+                )
         )
     )
-        
-    #### Add stop-area door state items
     
-        
-    #### assign the decomp
-    # Note, for now this isn't including what's happening within the stop area
+    #### Assign the basic decomp
+    # Note that we will later override some of this based on consecutive portions of other_delay 
     rawnav = (
         rawnav
         .assign(
             basic_decomp = lambda x: np.select(
                 [
-                x.is_stopped.eq(True) & x.any_door_open.eq(True),
-                x.is_stopped.eq(True) & x.any_door_open.eq(False),
+                x.is_stopped.eq(True),
                 x.is_steady.eq(True),
-                x.accel_decel.ne("nan"), #TODO: i screwed something up with strings, gah
-                x.is_steady.eq(False) & x.is_stopped.eq(False) & x.accel_decel.eq("nan")
+                x.accel_decel.notna(),
+                x.is_steady.eq(False) & x.is_stopped.eq(False) & x.accel_decel.isna()
                 ],
                 [
-                "stopped_pax",
-                "stopped_nopax",
+                "stopped",
                 "steady",
                 x.accel_decel,
                 "other_delay"
-                ]
+                ],
+                default = "error"
             )
         )
     )
 
+    #### Combine stop areas 
+    # When we see short bits of movement around the stop (such as traffic delaying entry to
+    # stop area or creeping from a near-side stop to the signal) we want to combine those into
+    # one chunk. We first look for the earliest point where the bus stopped in a chunk of 
+    # stopped time. 
+    rawnav_stopped_lims = (
+        rawnav
+        .loc[rawnav.is_stopped]
+        .groupby(['filename','index_run_start','stopped_changes'], sort = False)
+        .agg(
+            min_odom = ('odom_ft','min')
+        )
+    )
+
+    # find out when you're near a stop
+    rawnav = (
+        rawnav
+        .sort_values(by = ["odom_ft",'index_loc'])
+        .pipe(
+            pd.merge_asof,
+            right = rawnav_stopped_lims,
+            by = ['filename','index_run_start'],
+            left_on = 'odom_ft',
+            right_on = 'min_odom',
+            direction = 'forward'
+        )
+        .assign(
+            # TODO: we should probably handle this in a more spaitally sensitive fashion,
+            # but will probably need to use threhsolds like this in any case. The idea here
+            # is that we want to collapse stop activity wihtin 100 feet to one case on the notion
+            # that hte bus is probably just pulling forward from bus stop to the intersection 
+            # stop bar/crosswalk
+            near_stop = lambda x: x.min_odom - x.odom_ft <= 100, 
+        )
+    )
+
+    # we only want to collapse cases if the points within a stopped_changes group are 
+    # all in this murky other delay category and they're all near a stop (i.e. those 
+    # purple dots between orange or red dots)
+    rawnav['all_other_delay'] = (
+        rawnav
+        .groupby(['filename','index_run_start','stopped_changes'], sort = False)['basic_decomp']
+        .transform(
+            lambda x: all(x == 'other_delay')
+        )   
+    )
+       
+    rawnav['all_near_stop'] = (
+        rawnav
+        .groupby(['filename','index_run_start','stopped_changes'], sort = False)['near_stop']
+        .transform(
+            lambda x: all(x.eq(True))
+        )   
+    )
+    
+    rawnav = rawnav.assign(reset_group = lambda x: x.all_other_delay & x.all_near_stop)
+    
+    # Now that we've identified items that need to be reset into an earlier group, 
+    # we shift around some identifiers and values to do so.
+    rawnav['reset_group_lead'] = (
+        rawnav
+        .groupby(['filename','index_run_start'], sort = False)['reset_group']
+        .shift(1, fill_value = False)
+    )
+    
+    rawnav = (
+        rawnav
+        .assign(
+            stopped_changes_collapse = lambda x:
+                np.select(
+                    [
+                    (~x.reset_group& ~x.reset_group_lead),
+                    x.reset_group,
+                    x.reset_group_lead
+                    ],
+                    [
+                    x.stopped_changes,
+                    x.stopped_changes - 1,
+                    x.stopped_changes - 2
+                    ]
+                )
+        )
+    )
+
+    #### Identify if stopped for pax
+    rawnav = (
+        rawnav
+        .assign(
+            door_state_closed = lambda x: (x.door_state == "C") 
+        )
+    )
+        
+    rawnav['any_door_open'] = (
+        rawnav
+        .groupby(['filename','index_run_start','stopped_changes_collapse'])['door_state_closed']
+        .transform(lambda x: any(~x))       
+    )
+    
+    rawnav['any_veh_stopped'] = (
+        rawnav
+        .groupby(['filename','index_run_start','stopped_changes_collapse'])['is_stopped']
+        .transform(lambda x: any(x))  
+    )
+
+    ####  distinguish dwell types
+    # we want to see where the first door open event happens, since we'll think of that as the
+    # 'real' door open case. Anything after that kind of becomes delay (e.g., operatior
+    # is stuck at light and reopens door because someone comes running up)
+    rawnav['door_changes'] = (
+        rawnav
+        .groupby(['filename','index_run_start','stopped_changes_collapse'])['door_state_closed']
+        .transform(
+            lambda x: x.diff().ne(0).cumsum()
+        )
+    )
+        
+    # next, we find where the min and max observation of a door change is, similar to what 
+    # we'll do for steady state in a bit. In R we could just stick to grouped operations,
+    # but here it's easier to summarize and then rejoin.
+    # Unfortunately, we can't just assume that based on the index of door_changes that you're
+    # open or closed, as this bit us during QJ study. Weird things can happen on the margin 
+    # of intervals, basically, so this is safer.
+    door_open_lims = (
+        rawnav
+        .loc[
+            rawnav.any_veh_stopped & ~rawnav.door_state_closed
+        ]
+        .groupby(['filename','index_run_start','stopped_changes_collapse'])
+        .agg(
+            door_open_min = ('door_changes','min'),
+            door_open_max = ('door_changes','max')
+        )
+    )
+    
+    #### Add stop-area door state items
+    # TODO: maybe i should use the APC tags here too? Maybe we should go from first to last 
+    # APC tag?
+    # TODO: maybe consider adding a bus stop identifier before this point
+    rawnav = (
+        rawnav       
+        .merge(
+            door_open_lims,
+            on = ['filename','index_run_start','stopped_changes_collapse'],
+            how = 'left'
+        )
+        .assign(
+            relative_to_dwell = lambda x: np.select(
+                [
+                    x.door_state.eq('C') & x.door_changes.le(x.door_open_min),
+                    x.door_state.eq('O') & x.door_changes.eq(x.door_open_min),
+                    x.door_changes.gt(x.door_open_min),
+                    x.any_door_open.eq(False) & x.any_veh_stopped.eq(True) 
+                ],
+                [
+                    "pre",
+                    "at",
+                    "post",
+                    # we use a text NA here to distinguish from cases where 
+                    # vehicle is not at a stop, period
+                    "NA" 
+                ],
+                default = pd.NA          
+            )    
+        )
+        .assign(
+            # cle
+            door_changes = lambda x: 
+                np.where(
+                    x.any_veh_stopped.eq(False),
+                    pd.NA,
+                    x.door_changes
+                )
+        )
+    )
+        
+    # TODO: update decomposition based on whether the vehicle stopped at all in the group
+    rawnav = (
+        rawnav
+        .assign(
+            basic_decomp = lambda x:
+                np.where(
+                    x.any_veh_stopped.eq(True),
+                    "stopped",
+                    x.basic_decomp
+                )
+        )
+        .assign(
+            stop_type = lambda x:
+                np.select(
+                    [
+                    x.basic_decomp.eq('stopped') & x.any_door_open.eq(True),
+                    x.basic_decomp.eq('stopped') & x.any_door_open.eq(False)
+                    ],
+                    [
+                    "pax",
+                    "nopax"
+                    ],
+                    default = pd.NA
+                )
+        )
+        .assign(
+            stop_decomp = lambda x: 
+                np.where(
+                    x.basic_decomp.eq('stopped'),
+                    x.stop_type + "_" + x.relative_to_dwell + "_" + x.veh_state_calc + "_" + x.door_state,
+                    pd.NA                    
+                )
+        )
+    )
+
     ####  cleanup
-    # TODO:  once no longer debugging, drop these cols or whatever else that were problematic 
-    # rawnav = (
-    #     rawnav
-    #     .drop([
-    #         "is_stopped",
-    #         "stopped_changes",
-    #         "steady_fps",
-    #         "steady_fps",
-    #         "steady_fps_sec_start",
-    #         "steady_fps_sec_end",
-    #         "accel_decel"
-    #         ],
-    #         axis = "columns"
-    #     )
-    # )
+    # TODO:  once no longer debugging, drop these cols or whatever else that were problematic
+    # TODO: should we drop veh_state? it's not really correct, we don't use it
+    rawnav = (
+        rawnav
+        .drop([
+            "is_stopped",
+            "is_steady",
+            "stopped_changes",
+            "steady_fps_sec_start",
+            "steady_fps_sec_end",
+            "accel_decel",
+            "min_odom",
+            "near_stop",
+            "all_other_delay",
+            "all_near_stop",
+            "reset_group",
+            "reset_group_lead",
+            "door_state_closed",
+            "door_open_min",
+            "door_open_max"
+            ],
+            axis = "columns"
+        )
+    )
+    
+    # to clarify, the key stop 
     
     return(rawnav)
         
@@ -556,6 +697,8 @@ def interp_over_sec(rawnav, interp_method = "index"):
             [
             'sec_past_st_next',
             'sec_past_st_lag',
+            'odom_low',
+            'odom_hi',
             'secs_next',
             'secs_last',
             'odom_interp_fail'
