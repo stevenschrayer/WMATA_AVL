@@ -153,6 +153,14 @@ del rawnav_rt
 del rawnav_fil_rt
 
 
+
+
+
+# %% Get one record per second
+
+# This function 
+
+
 # %% Identify the stop window
 
 rawnav_window = (
@@ -167,31 +175,50 @@ rawnav_window = (
 del rawnav_fil
 
 
-# %% Determine the heading at each stop
+# %% Reset headings so they never loop back around zero
 
-# Range is from 0 to 360, there are no negative values
-heading_range = [rawnav_window.heading.min(), rawnav_window.heading.max()]
-
-heading_stop = (
+# Lag the heading values
+rawnav_window[['heading_lag']] = (
     rawnav_window
-    .dropna(subset = ['stop_id']) 
-    .groupby(['route','pattern','stop_id'])
-    .agg(
-        heading_min = ('heading', 'min'),
-        heading_p05 = ('heading', lambda x: x.quantile(.05)),
-        heading_med = ('heading', 'median'),
-        heading_p95 = ('heading', lambda x: x.quantile(.95)),
-        heading_max = ('heading', 'max'),
-        heading_mean = ('heading', 'mean'),
-    )
-    .reset_index()
+    .groupby(['filename','index_run_start'], sort = False)[['heading']]
+    .transform(lambda x: x.shift(1))
 )
 
+# Calculate the difference in heading between records
+rawnav_reset_heading = (
+    rawnav_window
+    .assign(
+        heading_chg = lambda x:
+            np.where(
+                    #If the difference is less than 180 degrees, do a normal difference
+                    abs(x.heading - x.heading_lag) <= 180,
+                    x.heading - x.heading_lag,
+                    np.where(
+                        x.heading > x.heading_lag,
+                        # If the heading is a larger value, the change is negative. Add 360 to the previous value 
+                        x.heading - (x.heading_lag + 360),
+                        # If the heading is a smaller value, the change is positive so just use modulo
+                        (x.heading - x.heading_lag)%360
+                    )
+            )
+    )            
+)
+
+# Set the first heading_chg of each trip to just the heading
+rawnav_reset_heading.loc[rawnav_reset_heading.groupby(['filename','index_run_start']).head(1).index, 'heading_chg'] = rawnav_reset_heading.loc[rawnav_reset_heading.groupby(['filename','index_run_start']).head(1).index, 'heading']
+
+# Cumulatively sum the heading_chg column for a new heading column that doesn't wrap around at 0 and 360
+rawnav_reset_heading['heading_new'] = (
+    rawnav_reset_heading
+    .groupby(['filename','index_run_start'], sort = False)[['heading_chg']]
+    .cumsum()        
+)
 
 # %% Plot sample data
     
 heading_sample = (
-    rawnav_window[rawnav_window.index_run_start == 14528]
+    rawnav_reset_heading[rawnav_reset_heading.index_run_start == 9306]
+    .query('filename == "rawnav07225210305.txt"')
     .assign(stop_zone = lambda x: 
                 np.where(
                     x.stop_window_area.isna(),
@@ -211,6 +238,79 @@ fig = px.scatter(x = heading_sample.odom_ft,
                  y = heading_sample.heading,
                  color = heading_sample.stop_zone_stop)
 fig.show()
+
+
+
+# %% Prepare data for speed calculation
+
+# Replace the heading column with the new heading values
+rawnav_heading = rawnav_reset_heading.assign(heading = rawnav_reset_heading[['heading_new']])
+
+# aggregate so we only have one observation for each second - this uses the 'last' heading observation
+rawnav_heading2 = agg_sec(rawnav_heading)
+
+# quick check of how many pings we will have repeated seconds values
+(rawnav_heading2.shape[0] - rawnav_heading.shape[0]) / rawnav_heading.shape[0]
+
+# This is a separate step again; there are some places where we'll want to interpolate that
+# aren't just the ones where we aggregated seconds. In general, we'll probably want to 
+# revisit the aggregation/interpolation process, so I'm going to try not to touch this too much
+# more for now.
+rawnav_heading3 = interp_heading_over_sec(rawnav_heading2)
+
+
+# %% Calculate angular speed
+
+# these are not the rolling vals, though i think we will want to include those before long.
+rawnav_heading4 = calc_angular_speed(rawnav_heading3)
+
+
+
+# %% Plot sample data
+
+speed_sample = (
+    rawnav_heading4[rawnav_heading4.index_run_start == 14528]
+    .assign(stop_zone = lambda x: 
+                np.where(
+                    x.stop_window_area.isna(),
+                    "no",
+                    "stop_area"
+                ),
+            stop_zone_stop = lambda x:
+                np.where(
+                    x.stop_id.isna(),
+                    x.stop_zone,
+                    "stop"
+                )
+    )
+)
+
+fig = px.scatter(x = speed_sample.odom_ft, 
+                 y = speed_sample.deg_sec_next,
+                 color = speed_sample.stop_zone_stop)
+fig.show()
+
+
+# %% Determine the heading at each stop
+
+# Range is from 0 to 360, there are no negative values
+heading_range = [rawnav_reset_heading.heading_new.min(), rawnav_reset_heading.heading_new.max()]
+
+heading_stop = (
+    rawnav_reset_heading
+    .dropna(subset = ['stop_id']) 
+    .groupby(['route','pattern','stop_id'])
+    .agg(
+        heading_min = ('heading_new', 'min'),
+        heading_p05 = ('heading_new', lambda x: x.quantile(.05)),
+        heading_med = ('heading_new', 'median'),
+        heading_p95 = ('heading_new', lambda x: x.quantile(.95)),
+        heading_max = ('heading_new', 'max'),
+        heading_mean = ('heading_new', 'mean'),
+    )
+    .reset_index()
+)
+
 
 
 
