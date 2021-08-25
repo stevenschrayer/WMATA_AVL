@@ -9,9 +9,16 @@ Created on Tue Aug 24 23:29:24 2021
 # Entirely copied from Wylie's movement decomposition, replacing odometer 
 # calculations with headings
 
+import pandas as pd
+import numpy as np
+from . import low_level_fns as ll
+from . import decompose_rawnav as dr
+from math import factorial
+
+
 #### interpolation functions
 # despite the name, this is called by interp_over_sec
-def interp_odom(x, ft_threshold = 1, fix_interp = True, interp_method = "index"):
+def interp_heading(x, deg_threshold = 1, fix_interp = True, interp_method = "index"):
     # ft_threshold is how far outside the bands of observed odom_ft values we would allow. a little
     # wiggle room probbaly okay given how we understand these integer issues appearing
     
@@ -21,7 +28,7 @@ def interp_odom(x, ft_threshold = 1, fix_interp = True, interp_method = "index")
         raise ValueError("sec_past_st shouldn't be duplicated at this point")
     else:
         # interpolate
-        x.odom_ft = x.odom_ft.interpolate(method = interp_method)
+        x.heading = x.heading.interpolate(method = interp_method)
         
         # test
         # Could probably fix some of this, but oh well
@@ -29,28 +36,28 @@ def interp_odom(x, ft_threshold = 1, fix_interp = True, interp_method = "index")
             x = (
                 x
                 .assign(
-                    odom_low = lambda x, ft = ft_threshold : (
-                        (x.odom_ft < (x.odom_ft_min - ft))
+                    heading_low = lambda x, deg = deg_threshold : (
+                        (x.heading < (x.heading_min - deg))
                     ),
-                    odom_hi = lambda x, ft = ft_threshold : (
-                        (x.odom_ft > (x.odom_ft_max + ft))    
+                    heading_hi = lambda x, deg = deg_threshold : (
+                        (x.heading > (x.heading_max + deg))    
                     )
                 )
                 .assign(
-                    odom_ft = lambda x, ft = ft_threshold: np.select(
+                    heading = lambda x, deg = deg_threshold: np.select(
                     [
                         #I think we avoid evaluating other conditions 
                         # if the first case is true
-                        x.odom_low.eq(False) & x.odom_hi.eq(False),
-                        x.odom_low,
-                        x.odom_hi,
+                        x.heading_low.eq(False) & x.heading_hi.eq(False),
+                        x.heading_low,
+                        x.heading_hi,
                     ],
                     [
-                        x.odom_ft,
-                        x.odom_ft_min - ft,
-                        x.odom_ft_max + ft
+                        x.heading,
+                        x.heading_min - deg,
+                        x.heading_max + deg
                     ],
-                    default = x.odom_ft # this is probably overkill
+                    default = x.heading # this is probably overkill
                     )    
                 )
                 
@@ -60,9 +67,9 @@ def interp_odom(x, ft_threshold = 1, fix_interp = True, interp_method = "index")
         x = (
             x
             .assign(
-                odom_interp_fail = lambda x, ft = ft_threshold : (
-                    (x.odom_ft < (x.odom_ft_min - ft)) |
-                    (x.odom_ft > (x.odom_ft_max + ft))
+                odom_interp_fail = lambda x, deg = deg_threshold : (
+                    (x.heading < (x.heading_min - deg)) |
+                    (x.heading > (x.heading_max + deg))
                 )
             )
         )
@@ -147,6 +154,8 @@ def agg_sec(rawnav):
             lat = ('lat','last'),
             long = ('long','last'),
             heading = ('heading','last'),
+            heading_min = ('heading','min'),
+            heading_max = ('heaing', 'max'),
             # i'm hoping it's never the case that door changes on the same second
             # if it does, will be in a world of pain.
             # this join works better when we expect every row to be filled
@@ -232,6 +241,8 @@ def agg_sec(rawnav):
              'long_raw',
              'sat_cnt',
              'collapsed_rows',
+             'heading_min',
+             'heading_max',
              'odom_ft_min',
              'odom_ft_max',
              'door_state_all',
@@ -244,7 +255,7 @@ def agg_sec(rawnav):
     
     return(rawnav)
 
-def interp_over_sec(rawnav, interp_method = "index"):
+def interp_heading_over_sec(rawnav, interp_method = "index"):
     
     #### first, set as NA the values that we plan to interpolate over.
     # TODO: In the future, we probably will not want to be dropping data,
@@ -273,10 +284,10 @@ def interp_over_sec(rawnav, interp_method = "index"):
             secs_last = lambda x: x.sec_past_st - x.sec_past_st_lag
         )
         .assign(
-            odom_ft = lambda x: np.where(
+            heading = lambda x: np.where(
                 x.secs_next.eq(2) & x.secs_last.eq(1),
                 np.nan,
-                x.odom_ft
+                x.heading
             )    
         )
     )
@@ -286,21 +297,21 @@ def interp_over_sec(rawnav, interp_method = "index"):
     rawnav = (
         rawnav
         .assign(
-            odom_ft = lambda x: np.where(
+            heading = lambda x: np.where(
                 x.collapsed_rows.eq(1),
-                x.odom_ft,
+                x.heading,
                 np.nan
             ),
-            odom_interp_fail = lambda x: np.nan
+            heading_interp_fail = lambda x: np.nan
         )
     )
         
-    #### interpolate the odom values 
+    #### interpolate the heading values 
     rawnav = (
         rawnav
         .groupby(['filename','index_run_start'])
         # TODO: we should also probably interpolate heading
-        .apply(lambda x: interp_odom(x, interp_method = interp_method))
+        .apply(lambda x: interp_heading(x, interp_method = interp_method))
         .reset_index(drop = True)
     ) 
         
@@ -315,7 +326,7 @@ def interp_over_sec(rawnav, interp_method = "index"):
             'sec_past_st_lag',
             'secs_next',
             'secs_last',
-            'odom_interp_fail'
+            'heading_interp_fail'
             ],
             axis = "columns"
         )
@@ -323,37 +334,37 @@ def interp_over_sec(rawnav, interp_method = "index"):
     
     return(rawnav)
 
-def calc_speed(rawnav):
+def calc_angular_speed(rawnav):
     
     #### lag values
-    rawnav[['odom_ft_next','sec_past_st_next']] = (
+    rawnav[['heading_next','sec_past_st_next']] = (
         rawnav
-        .groupby(['filename','index_run_start'], sort = False)[['odom_ft','sec_past_st']]
+        .groupby(['filename','index_run_start'], sort = False)[['heading','sec_past_st']]
         .transform(lambda x: x.shift(-1))
     )
     
-    #### calculate FPS
+    #### calculate degrees per second
     rawnav = (
         rawnav
         .assign(
             secs_marg = lambda x: x.sec_past_st_next - x.sec_past_st,
-            odom_ft_marg = lambda x: x.odom_ft_next - x.odom_ft,
-            fps_next = lambda x: ((x.odom_ft_next - x.odom_ft) / 
+            heading_marg = lambda x: x.heading_next - x.heading,
+            deg_sec_next = lambda x: ((x.heading_next - x.heading) / 
                                 (x.sec_past_st_next - x.sec_past_st))
         )
         # if you get nan's, it's usually zero travel distance and zero time around 
         # doors. the exception is at the end of the trip.
         .assign(
-            fps_next = lambda x: x.fps_next.replace([np.nan],0)
+            deg_sec_next = lambda x: x.deg_sec_next.replace([np.nan],0)
         )
     )
         
     # if you're the last row , we reset you back to np.nan
-    rawnav.loc[rawnav.groupby(['filename','index_run_start']).tail(1).index, 'fps_next'] = np.nan
+    rawnav.loc[rawnav.groupby(['filename','index_run_start']).tail(1).index, 'deg_sec_next'] = np.nan
 
     return(rawnav)
     
-def calc_accel_jerk(rawnav, groupvars = ['filename','index_run_start'], fps_col = 'fps_next'):
+def calc_angular_accel(rawnav, groupvars = ['filename','index_run_start'], speed_col = 'deg_sec_next'):
     # a little inefficient to recalculate this, but we're tryign to call this within the exapnded
     # data as well.
     rawnav['sec_past_st_next'] = (
@@ -362,12 +373,12 @@ def calc_accel_jerk(rawnav, groupvars = ['filename','index_run_start'], fps_col 
         .shift(-1)
     )
     
-    fps_lag_col = fps_col + "_lag"
+    speed_lag_col = speed_col + "_lag"
     
     #### Calculate acceleration
-    rawnav[[fps_lag_col]] = (
+    rawnav[[speed_lag_col]] = (
         rawnav
-        .groupby(groupvars, sort = False)[[fps_col]]
+        .groupby(groupvars, sort = False)[[speed_col]]
         .transform(lambda x: x.shift(1))
     )
 
@@ -381,46 +392,24 @@ def calc_accel_jerk(rawnav, groupvars = ['filename','index_run_start'], fps_col 
             # accel_next is also a bit of a misnomer; more like accel_at_point, 
             # because some downstream/notebook code depends on accel_next, sticking to that
             # nomenclature for now
-            accel_next = lambda x: (x[fps_col]- x[fps_lag_col]) / (x.sec_past_st_next - x.sec_past_st),
+            deg_accel_next = lambda x: (x[speed_col]- x[speed_lag_col]) / (x.sec_past_st_next - x.sec_past_st),
         )
         # as before, we'll set these cases to nan and then fill
          .assign(
-            accel_next = lambda x: x.accel_next.replace([np.Inf,-np.Inf],np.nan),
+            deg_accel_next = lambda x: x.deg_accel_next.replace([np.Inf,-np.Inf],np.nan),
         )
     )
     
     # but now, if you're the last row, we reset you back to np.nan
-    rawnav.loc[rawnav.groupby(groupvars).tail(1).index, 'accel_next'] = np.nan
-    
-    #### Calculate Jerk
-    rawnav[['accel_next_lag']] = (
-        rawnav
-        .groupby(groupvars, sort = False)[['accel_next']]
-        .transform(lambda x: x.shift(1))
-    )
-    
-    rawnav = (
-        rawnav 
-        .assign(
-            jerk_next = lambda x: (x.accel_next - x.accel_next_lag) / (x.sec_past_st_next - x.sec_past_st),
-        )
-        # as before, we'll set these cases to nan and then fill
-         .assign(
-            jerk_next = lambda x: x.jerk_next.replace([np.Inf,-np.Inf],np.nan),
-        )
-    )
-    
-    # but now, if you're the last row, we reset you back to np.nan
-    rawnav.loc[rawnav.groupby(groupvars).tail(1).index, 'jerk_next'] = np.nan
+    rawnav.loc[rawnav.groupby(groupvars).tail(1).index, 'deg_accel_next'] = np.nan
          
     #### Cleanup
     # drop some leftover cols
     rawnav = (
         rawnav
         .drop([
-            fps_lag_col,
-            'sec_past_st_next',
-            'accel_next_lag'
+            speed_lag_col,
+            'sec_past_st_next'
             ],
             axis = "columns"
         )
