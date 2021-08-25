@@ -1,0 +1,233 @@
+---
+title: "Movement Explore for Presentation"
+output: html_notebook
+---
+
+```{r include=FALSE}
+source('99-movement-explore-setup.R', local = TRUE)
+```
+
+Update: overall conclusion is that the smoothing did almost nothing to address these cases.
+
+# Data Loads
+```{r}
+rawnav_decomp_all <- 
+  load_rawnav(
+    file.path(path_data,"test_decomp_mov11_all.csv")
+  ) %>%
+  cleanup_things()
+
+```
+
+# Figures
+quickly looking at this because it seemed weird in tbaleau
+```{r}
+check_plot <-
+  rawnav_decomp_all %>%
+  filter(
+    filename == "rawnav04475210210.txt",
+    index_run_start == 4279
+  ) %>%
+  plot_rawnav(fps3)
+
+check_plot
+
+```
+
+
+# what is the max amount of time in a stop group with just other_delay and nothing else
+
+```{r}
+long_other_delay <-
+  rawnav_decomp_all %>%
+  group_by(filename,index_run_start,stopped_changes) %>%
+  filter(
+    all(basic_decomp == "other_delay")
+  ) %>%
+  summarize(
+    tot_secs_other_delay = sum(secs_marg, na.rm = TRUE),
+    tot_odom_other_delay = sum(odom_ft_marg, na.rm = TRUE),
+    min_odom = min(odom_ft),
+    max_odom = max(odom_ft)
+  ) %>%
+  ungroup()
+
+long_other_delay_secs <-
+  long_other_delay %>%
+  arrange(
+    desc(
+      tot_secs_other_delay
+    )
+  ) %>%
+  head(10)
+
+long_other_delay_secs
+```
+
+
+```{r}
+long_other_delay_odom <-
+  long_other_delay %>%
+  arrange(
+    desc(
+      tot_odom_other_delay
+    )
+  ) %>%
+  head(10)
+
+long_other_delay_odom
+```
+# let's look at these
+## long odom
+
+```{r}
+
+filter_to_bad <- function(
+  bad_one,
+  rawnav
+) {
+   rawnav %>%
+      filter(
+        (filename %in% bad_one$filename) & 
+        (index_run_start %in% bad_one$index_run_start)
+      )
+}
+
+show_bad_case <- 
+  function(
+    bad_one,
+    rawnav
+  ) {
+    bad_one %>%
+      filter_to_bad(rawnav) %>%
+      plot_rawnav(
+        .,
+        var = basic_decomp,
+        odom_min = bad_one$min_odom[1],
+        odom_max = bad_one$max_odom[1]
+      )
+    
+  }
+
+```
+
+This first one seems to occur at the end of a trip instance
+```{r}
+long_other_delay_odom %>%
+  filter(
+    row_number() ==1 
+  ) %>%
+  show_bad_case(.,rawnav_decomp_all)
+```
+
+This is an interesting one. seems to just creep long for a bit, never hits steady state. the whole trip looks 'rocky' -- we have some really long accel and decel phases too. i figure if you compared this to others, you'd get some weird results. i think if we addressed some of these smoothing issues we might actually find a steady state though.
+
+UPDATE: nope! not really sure what to do about this then. Leave as is? seems like it's just traffic delay, basiclaly
+
+```{r}
+paste0(long_other_delay_odom$filename[2],"-",long_other_delay_odom$index_run_start[2])
+```
+
+```{r}
+long_other_delay_odom %>%
+  filter(
+    row_number() ==2 
+  ) %>%
+  show_bad_case(.,rawnav_decomp_all)
+```
+
+```{r}
+long_other_delay_odom %>%
+  filter(
+    row_number() ==2 
+  ) 
+```
+
+
+```{r}
+long_other_delay_odom %>%
+  filter(
+    row_number() ==2 
+  ) %>%
+  filter_to_bad(.,rawnav_decomp_all) %>%
+  View()
+
+```
+
+
+From other nosing around at interpolation, this one has some big misses
+this looks like a case where the last three seconds leading up to a stop had a lot of repeated values, including the one on the stop; that led to some interpolation that totally misses the stop itself, which is certainly not good.
+```{r}
+rawnav_decomp_all %>%
+  filter(
+    filename == "rawnav06479210218.txt",
+    index_run_start == 12436
+  ) %>%
+  plot_rawnav(collapsed_rows, odom_min = 36541, odom_max = 37604)
+```
+
+Very similar case to above
+```{r}
+long_other_delay_odom %>%
+  filter(
+    row_number() == 3 
+  ) %>%
+  show_bad_case(.,rawnav_decomp_all)
+```
+
+Hmm, this is tough. one that just shows creeping along. I think that this would be tough to ever break out into steady state, even if we tweaked params more. I'm also not sure whether that second case should be collapsed into one stop or many. 
+
+The 4950 timestamp looks like [branch and alabama](https://www.google.com/maps/place/38%C2%B051'44.4%22N+76%C2%B057'32.7%22W/@38.862547,-76.9618119,16.89z/data=!4m5!3m4!1s0x0:0x0!8m2!3d38.86233!4d-76.95909) and 4989 looks like a little further up [at the same intersection](https://www.google.com/maps/place/38%C2%B051'43.6%22N+76%C2%B057'32.6%22W/@38.8621,-76.9612387,17z/data=!3m1!4b1!4m5!3m4!1s0x0:0x0!8m2!3d38.8621!4d-76.95905). this also seems like an area where teh small hill could be affecting our decomposition. 
+```{r}
+long_other_delay_odom %>%
+  filter(
+    row_number() == 4
+  ) %>%
+  show_bad_case(.,rawnav_decomp_all)
+```
+
+```{r}
+long_other_delay_odom %>%
+  filter(
+    row_number() == 4
+  ) %>%
+  filter_to_bad(.,rawnav_decomp_all) %>%
+  View()
+```
+
+This seems like a case where dropping observations that are followed by a gap could get us into serious trouble. This one is full of holes. but another case where better smoothing could return better values. but if we only consider ones that are preceeded by another datapoint in the previous second, then it could be fine.
+```{r}
+long_other_delay_odom %>%
+  filter(
+    row_number() == 5
+  ) %>%
+  show_bad_case(.,rawnav_decomp_all)
+```
+
+```{r}
+long_other_delay_odom %>%
+  filter(
+    row_number() == 6
+  ) %>%
+  show_bad_case(.,rawnav_decomp_all)
+```
+
+## long secs
+
+Also a pretty long case in odometer terms, but pretty slow. Is this on the other list too? Seems like ti.
+```{r}
+long_other_delay_secs %>%
+  filter(
+    row_number() == 1
+  ) %>%
+  show_bad_case(.,rawnav_decomp_all)
+```
+
+```{r}
+long_other_delay_secs %>%
+  filter(
+    row_number() == 2
+  ) %>%
+  show_bad_case(.,rawnav_decomp_all)
+```
+
