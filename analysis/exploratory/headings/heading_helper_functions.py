@@ -11,8 +11,9 @@ Created on Tue Aug 24 23:29:24 2021
 
 import pandas as pd
 import numpy as np
-from . import low_level_fns as ll
-from . import decompose_rawnav as dr
+import wmatarawnav as wr
+from wmatarawnav import low_level_fns as ll
+from wmatarawnav import decompose_rawnav as dr
 from math import factorial
 
 
@@ -145,17 +146,17 @@ def agg_sec(rawnav):
             # some of these are just to avoid a bigger groupby call
             route_pattern = ('route_pattern',"first"),
             pattern = ('pattern',"first"),
-            index_run_end = ('index_run_end',"first"),
+#            index_run_end = ('index_run_end',"first"),
             route = ('route',"first"),
-            wday = ('wday',"first"),
-            start_date_time = ('start_date_time',"first"),
+#            wday = ('wday',"first"),
+#            start_date_time = ('start_date_time',"first"),
             # in this sense, we're starting to lose data and have to make judgment calls
             index_loc = ('index_loc','max'),
             lat = ('lat','last'),
             long = ('long','last'),
             heading = ('heading','last'),
             heading_min = ('heading','min'),
-            heading_max = ('heaing', 'max'),
+            heading_max = ('heading', 'max'),
             # i'm hoping it's never the case that door changes on the same second
             # if it does, will be in a world of pain.
             # this join works better when we expect every row to be filled
@@ -164,7 +165,7 @@ def agg_sec(rawnav):
             odom_ft = ('odom_ft','last'),
             odom_ft_min = ('odom_ft','min'),
             odom_ft_max = ('odom_ft','max'),
-            sat_cnt = ('sat_cnt','last'),
+#            sat_cnt = ('sat_cnt','last'),
             # TODO: taking the last might hide a door open that lasts <1 second, but that seems
             # unlikly and we aren't likely to care.
             door_state = ('door_state', 'last'),
@@ -175,9 +176,9 @@ def agg_sec(rawnav):
             # column
             stop_window_e = ('stop_window_e', lambda x: x.str.cat(sep=",",na_rep = None)),
             stop_window_x = ('stop_window_x', lambda x: x.str.cat(sep=",",na_rep = None)),
-            blank = ('blank', lambda x: ','.join(x.unique().astype(int).astype(str))),
-            lat_raw = ('lat_raw','last'),
-            long_raw = ('long_raw','last'),
+#            blank = ('blank', lambda x: ','.join(x.unique().astype(int).astype(str))),
+#            lat_raw = ('lat_raw','last'),
+#            long_raw = ('long_raw','last'),
             # TODO: possible we don't want to collapse this...
             row_before_apc = ('row_before_apc', lambda x: ','.join(x.unique().astype(int).astype(str))),
             collapsed_rows = ('index_loc','count')
@@ -224,10 +225,10 @@ def agg_sec(rawnav):
              'index_run_start',
              'route_pattern',
              'pattern',
-             'index_run_end',
+#             'index_run_end',
              'route',
-             'wday',
-             'start_date_time',
+#             'wday',
+#             'start_date_time',
              'index_loc',
              'odom_ft',
              'sec_past_st',
@@ -237,9 +238,9 @@ def agg_sec(rawnav):
              'row_before_apc',
              'lat',
              'long',
-             'lat_raw',
-             'long_raw',
-             'sat_cnt',
+#             'lat_raw',
+#             'long_raw',
+#             'sat_cnt',
              'collapsed_rows',
              'heading_min',
              'heading_max',
