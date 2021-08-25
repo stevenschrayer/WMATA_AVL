@@ -118,6 +118,7 @@ rawnav_fil7 = wr.smooth_speed(rawnav_fil6)
 # Add in the decomposition
 rawnav_fil8 = (
     rawnav_fil7
+    .query("filename == 'rawnav07231210206.txt' & index_run_start == 19655")
     .pipe(
           wr.decompose_mov,
           stopped_fps = 3, #upped from 2
