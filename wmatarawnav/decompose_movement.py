@@ -9,6 +9,7 @@ import numpy as np
 from . import low_level_fns as ll
 from . import decompose_rawnav as dr
 from math import factorial
+import warnings
 
 # we'll use this to just identify what the heck the bus is doing at any particular
 # point in time.
@@ -17,24 +18,18 @@ from math import factorial
 
 def reset_odom(
     rawnav,
-    groupvars = ['filename','index_run_start']    
+    indicator_var = "stop_id",
+    reset_vars = ['odom_ft','sec_past_st']
     ):
+    reset_idx = rawnav[indicator_var].first_valid_index() 
     
-    rawnav['odom_ft'] = (
-        rawnav
-        .groupby(['filename','index_run_start'])['odom_ft']
-        .transform(
-            lambda x: x - min(x)    
-        )
-    )
-
-    rawnav['sec_past_st'] = (
-        rawnav
-        .groupby(['filename','index_run_start'])['sec_past_st']
-        .transform(
-            lambda x: x - min(x)    
-        )
-    )
+    if reset_idx == None:
+        case = rawnav.filename.iloc[0] + "-" + str(rawnav.index_run_start.iloc[0])
+        warnings.warn('No stop id found for ' + case)
+        return(rawnav)
+    
+    for var in reset_vars:
+        rawnav[var] = rawnav[var] - rawnav.loc[reset_idx,var]
     
     return(rawnav)
 
@@ -173,7 +168,7 @@ def decompose_mov(
         .sort_values(by = ["odom_ft",'index_loc'])
         .pipe(
             pd.merge_asof,
-            right = rawnav_stopped_lims,
+            right = rawnav_stopped_lims.sort_values(['min_odom']),
             by = ['filename','index_run_start'],
             left_on = 'odom_ft',
             right_on = 'min_odom',
@@ -665,16 +660,26 @@ def interp_over_sec(rawnav, interp_method = "index"):
         )
     )
     
-     # where we collapsed, let's NA these out for interpolate
-     # if the repeated values are the same, we should probably not NA these out
+    # where we collapsed, let's NA these out for interpolate
+    # if the repeated values are the same, we should probably not NA these out
+    rawnav['row_number'] = (
+        rawnav
+        .groupby(['filename','index_run_start'], sort = False)
+        .cumcount()
+    )
+    
     rawnav = (
         rawnav
         .assign(
-            odom_ft = lambda x: np.where(
-                x.collapsed_rows.eq(1),
-                x.odom_ft,
-                np.nan
-            ),
+            
+        )
+        .assign(
+            odom_ft = lambda x: 
+                np.where(
+                    x.collapsed_rows.eq(1) | (x.collapsed_rows.gt(1) & x.row_number.eq(0)),
+                    x.odom_ft,
+                    np.nan
+                ),
             odom_interp_fail = lambda x: np.nan
         )
     )
@@ -701,7 +706,8 @@ def interp_over_sec(rawnav, interp_method = "index"):
             'odom_hi',
             'secs_next',
             'secs_last',
-            'odom_interp_fail'
+            'odom_interp_fail',
+            'row_number'
             ],
             axis = "columns"
         )
@@ -996,46 +1002,17 @@ def calc_rolling(
         .assign(timest = lambda x: pd.to_datetime(x.start_date_time)+ pd.to_timedelta(x.sec_past_st, unit = "s"))
         .set_index('timest')
     )
-        
+    
     # this works
     rawnav[['fps3','accel3','jerk3']] = (
         rawnav
         .groupby(groupvars,sort = False)[['fps_next_sm','accel_next','jerk_next']]
         .transform(
             lambda x:
-                x.rolling(
+                x
+                .sort_index() # not sure how this got unsorted, but...
+                .rolling(
                     window = '3s', 
-                    min_periods = 1, 
-                    center = True, 
-                    win_type = None
-                )
-                .mean()
-        )
-    )
-        
-    # we'll probably remove some of these later
-    rawnav[['accel5']] = (
-        rawnav
-        .groupby(groupvars,sort = False)[['accel_next']]
-        .transform(
-            lambda x:
-                x.rolling(
-                    window = '5s', 
-                    min_periods = 1, 
-                    center = True, 
-                    win_type = None
-                )
-                .mean()
-        )
-    )
-        
-    rawnav[['accel7']] = (
-        rawnav
-        .groupby(groupvars,sort = False)[['accel_next']]
-        .transform(
-            lambda x:
-                x.rolling(
-                    window = '7s', 
                     min_periods = 1, 
                     center = True, 
                     win_type = None
@@ -1049,7 +1026,9 @@ def calc_rolling(
         .groupby(groupvars,sort = False)[['accel_next']]
         .transform(
             lambda x:
-                x.rolling(
+                x
+                .sort_index()
+                .rolling(
                     window = '9s', 
                     min_periods = 1, 
                     center = True, 

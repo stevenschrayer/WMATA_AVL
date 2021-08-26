@@ -82,6 +82,52 @@ rawnav_fil = (
     )    
 )
 
+# Load the stop data
+stop_index = (
+    pq.read_table(source=os.path.join(path_processed_data,"stop_index.parquet"),
+                    columns = [ 'route',
+                                'pattern',
+                                'direction', #same as pattern_name_wmata_schedule
+                                'stop_id',
+                                'filename',
+                                'index_run_start',
+                                'index_loc',
+                                'odom_ft',
+                                'sec_past_st',
+                                'geo_description'],
+                    use_pandas_metadata = True
+    )
+    .to_pandas()
+    # As a bit of proofing, we confirm this is int32 and not string, may remove later
+    .assign(pattern = lambda x: x.pattern.astype('int32')) 
+    .rename(columns = {'odom_ft' : 'odom_ft_stop'})
+    .reset_index()
+)
+
+# join to it 
+# TODO: somehow all of my trips don't have stops here.
+rawnav_fil = (
+    rawnav_fil
+    .merge(
+        stop_index
+        # TODO: join on index_loc as well
+        .filter(items = ['filename','index_run_start','index_loc','stop_id']),
+        left_on = ['filename','index_run_start','index_loc'],
+        right_on = ['filename','index_run_start'],
+        how = "left"
+    )
+)
+
+# if a trip has no matched stops, we drop.
+rawnav_fil = (
+    rawnav_fil
+    .groupby(['filename','index_run_start'])
+    .filter(
+        lambda x: any(x.stop_id.notna())    
+    )    
+)
+
+
 # %% Start decomposition
 
 # TODO: replace with amit's methods
@@ -90,11 +136,13 @@ rawnav_fil2 = (
     # maybe we look a little bit closer at the southbound trips only
     # i think 30N02 is southbound
     .query('pattern == 2')
-    # for now, reset odometers to 1000 ft after start 
-    .query("odom_ft >= 1000")
 )
 
-rawnav_fil3 = wr.reset_odom(rawnav_fil2)
+rawnav_fil3 = (
+    rawnav_fil2
+    .groupby(['filename','index_run_start'])
+    .apply(lambda x: wr.reset_odom(x))
+)
 
 # aggregate so we only have one observation for each second
 rawnav_fil4 = wr.agg_sec(rawnav_fil3)
@@ -108,9 +156,9 @@ rawnav_fil4 = wr.agg_sec(rawnav_fil3)
 # more for now.
 rawnav_fil5 = wr.interp_over_sec(rawnav_fil4)
 
-# these are not the rolling vals, though i think we will want to include those before long.
 rawnav_fil6 = wr.calc_speed(rawnav_fil5)
 
+# this includes calculating the accel and such based on smoothed speed values
 rawnav_fil7 = wr.smooth_speed(rawnav_fil6)
 
 # TODO: insert joins of stop locations here
