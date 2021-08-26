@@ -104,30 +104,6 @@ stop_index = (
     .reset_index()
 )
 
-# join to it 
-# TODO: somehow all of my trips don't have stops here.
-rawnav_fil = (
-    rawnav_fil
-    .merge(
-        stop_index
-        # TODO: join on index_loc as well
-        .filter(items = ['filename','index_run_start','index_loc','stop_id']),
-        left_on = ['filename','index_run_start','index_loc'],
-        right_on = ['filename','index_run_start'],
-        how = "left"
-    )
-)
-
-# if a trip has no matched stops, we drop.
-rawnav_fil = (
-    rawnav_fil
-    .groupby(['filename','index_run_start'])
-    .filter(
-        lambda x: any(x.stop_id.notna())    
-    )    
-)
-
-
 # %% Start decomposition
 
 # TODO: replace with amit's methods
@@ -138,40 +114,33 @@ rawnav_fil2 = (
     .query('pattern == 2')
 )
 
-rawnav_fil3 = (
-    rawnav_fil2
-    .groupby(['filename','index_run_start'])
-    .apply(lambda x: wr.reset_odom(x))
-)
-
 # aggregate so we only have one observation for each second
-rawnav_fil4 = wr.agg_sec(rawnav_fil3)
+rawnav_fil3 = wr.agg_sec(rawnav_fil2)
 
 # quick check of how many pings we will have repeated seconds values
-(rawnav_fil4.shape[0] - rawnav_fil3.shape[0]) / rawnav_fil3.shape[0]
+(rawnav_fil3.shape[0] - rawnav_fil2.shape[0]) / rawnav_fil2.shape[0]
 
 # This is a separate step again; there are some places where we'll want to interpolate that
 # aren't just the ones where we aggregated seconds. In general, we'll probably want to 
 # revisit the aggregation/interpolation process, so I'm going to try not to touch this too much
 # more for now.
-rawnav_fil5 = wr.interp_over_sec(rawnav_fil4)
+rawnav_fil4 = wr.interp_over_sec(rawnav_fil3)
 
-rawnav_fil6 = wr.calc_speed(rawnav_fil5)
+rawnav_fil5 = wr.calc_speed(rawnav_fil4)
 
 # this includes calculating the accel and such based on smoothed speed values
-rawnav_fil7 = wr.smooth_speed(rawnav_fil6)
+rawnav_fil6 = wr.smooth_speed(rawnav_fil5)
 
-rawnav_fil7 = wr.calc_rolling(rawnav_fil7,['filename','index_run_start'])
+rawnav_fil7 = wr.calc_rolling(rawnav_fil6,['filename','index_run_start'])
 
 # Add in the decomposition
 rawnav_fil8 = (
     rawnav_fil7
-    .query("filename == 'rawnav07231210206.txt' & index_run_start == 19655")
     .pipe(
           wr.decompose_mov,
           stopped_fps = 3, #upped from 2
           slow_fps = 14.67, # upped default to 10mph
-          steady_accel_thresh = 2, #based on some casual observations
+          steady_accel_thresh = 2 #based on some casual observations
      )
 )
 

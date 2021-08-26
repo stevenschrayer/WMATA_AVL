@@ -14,7 +14,7 @@ import warnings
 # we'll use this to just identify what the heck the bus is doing at any particular
 # point in time.
 
-#### cleanup functions
+#### Stop Alignment functions
 
 def reset_odom(
     rawnav,
@@ -29,7 +29,10 @@ def reset_odom(
         return(rawnav)
     
     for var in reset_vars:
-        rawnav[var] = rawnav[var] - rawnav.loc[reset_idx,var]
+        # keep a copy of original...
+        rawnav[(var + "_og")] = rawnav[var]
+        # ...but overwrite the original for convenience
+        rawnav[(var)] = rawnav[var] - rawnav.loc[reset_idx,var]
     
     return(rawnav)
 
