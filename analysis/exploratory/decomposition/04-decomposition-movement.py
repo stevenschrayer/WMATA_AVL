@@ -161,7 +161,7 @@ rawnav_fil6 = wr.calc_speed(rawnav_fil5)
 # this includes calculating the accel and such based on smoothed speed values
 rawnav_fil7 = wr.smooth_speed(rawnav_fil6)
 
-# TODO: insert joins of stop locations here
+rawnav_fil7 = wr.calc_rolling(rawnav_fil7,['filename','index_run_start'])
 
 # Add in the decomposition
 rawnav_fil8 = (

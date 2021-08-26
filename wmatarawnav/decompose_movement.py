@@ -72,10 +72,7 @@ def decompose_mov(
     )
     
     #### Calc rolling vals only within stop segments
-    # TODO: I think this is kind of unnecessary, actually. We need to calc some of these 
-    # values sooner for data cleaning, so better to do it outside the decomp function
-    rawnav = calc_rolling(rawnav,['filename','index_run_start','stopped_changes'])
-    
+   
     rawnav = (
         rawnav
         .assign(
@@ -630,7 +627,6 @@ def interp_over_sec(rawnav, interp_method = "index"):
     # it's a bit sloppy. For now there are some known 'bad' values and it's a little
     # bit easier to just get rid of them and linearly interpolate since we're only looking
     # at a few cases.
-    
     # first, we look for ones that have one missing second afterwards but have one second before
     # for various reasons, these odometers tend to come out high
     rawnav['sec_past_st_next'] = (
