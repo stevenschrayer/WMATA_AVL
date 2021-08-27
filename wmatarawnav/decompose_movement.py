@@ -18,7 +18,7 @@ import warnings
 
 def reset_odom(
     rawnav,
-    indicator_var = "stop_id",
+    indicator_var = "stop_id_loc",
     reset_vars = ['odom_ft','sec_past_st']
     ):
     reset_idx = rawnav[indicator_var].first_valid_index() 
@@ -235,16 +235,111 @@ def match_stops(
         
     return(rawnav)
 
-def pick_near_stop(
-        rawnav_grp
+def create_stop_segs(
+        rawnav
     ):
+    #### Create Stop Segments
+    rawnav['stop_id_forw'] = (
+        rawnav
+        .groupby(['filename','index_run_start'])['stop_id_group']
+        .transform(lambda x: x.ffill())
+        .astype('Int64')
+        .astype('string')
+        .fillna(value = "tripstart")
+    )
+    
+    rawnav['stop_id_back'] = (
+        rawnav
+        .groupby(['filename','index_run_start'])['stop_id_group']
+        .transform(lambda x: x.bfill())
+        .astype('Int64')
+        .astype('string')
+        .fillna(value = "tripend")
+    )
+    
+    rawnav = (
+        rawnav
+        .assign(
+            stop_seg = lambda x:
+                np.where(
+                    x.stop_id_group.notna(),
+                    pd.NA,
+                    (x.stop_id_forw.astype(str) + "_" + x.stop_id_back.astype(str))
+                )
+        )
+        .assign(
+            trip_seg = lambda x:
+                np.where(
+                    x.stop_id_group.notna(),
+                    x.stop_id_group.astype('Int64').astype(str),
+                    x.stop_seg
+                )
+        )
+        .drop(['stop_id_forw','stop_id_back'], axis = "columns")
+    )
+        
+    #### Associate accel/decel with stop changes
+    
+    rawnav_stopped_changes_grps = (
+        rawnav
+        .groupby(['filename','index_run_start','stopped_changes_collapse'])
+        .agg(
+            # for now, just associating this to accel/decel
+            door_case = ('door_case','first')
+        )
+        .reset_index()
+    )
+        
+    rawnav = (
+        rawnav
+        .assign(
+            stopped_changes_collapse_prev = lambda x:
+                x.stopped_changes_collapse - 1,
+            stopped_changes_collapse_next = lambda x:
+                x.stopped_changes_collapse + 1
+        )
+    )
 
-    breakpoint()
+    rawnav = (
+        rawnav
+        .merge(
+            rawnav_stopped_changes_grps
+            .rename(columns = {'stopped_changes_collapse' : 'stopped_changes_collapse_prev'}),
+            on = ['filename','index_run_start','stopped_changes_collapse_prev'],
+            how = "left",
+            suffixes = ('','_prev')            
+        )
+        .merge(
+            rawnav_stopped_changes_grps
+            .rename(columns = {'stopped_changes_collapse' : 'stopped_changes_collapse_next'}),
+            on = ['filename','index_run_start','stopped_changes_collapse_next'],
+            how = "left",
+            suffixes = ('','_next')            
+        )
+        .assign(
+            basic_decomp_ext = lambda x: np.select(
+                [
+                    x.basic_decomp.eq('accel'),
+                    x.basic_decomp.eq('decel')
+                ],
+                [
+                    x.basic_decomp + "_" + x.door_case_prev,
+                    x.basic_decomp + "_" + x.door_case_next
+                ],
+                default = x.basic_decomp
+            )
+        )
+        .drop(
+            ['stop_seg',
+             'stopped_changes_collapse_next',
+             'stopped_changes_collapse_prev',
+             'door_case_prev',
+             'door_case_next'],
+            axis = 'columns'
+        )
+    )
     
-    
-    
-    return(rawnav_grp)
-    
+    return(rawnav)
 
 #### Decomposition
 def decompose_mov(
@@ -397,6 +492,8 @@ def decompose_mov(
     # we only want to collapse cases if the points within a stopped_changes group are 
     # all in this murky other delay category and they're all near a stop (i.e. those 
     # purple dots between orange or red dots)
+    # TODO: also cases where it's all stopped might need to apply, 
+    # see rawnav04475210210.txt 4279 at start of trip
     rawnav['all_other_delay'] = (
         rawnav
         .groupby(['filename','index_run_start','stopped_changes'], sort = False)['basic_decomp']
@@ -426,7 +523,7 @@ def decompose_mov(
     rawnav = (
         rawnav
         .assign(
-            stopped_changes_collapse = lambda x:
+            stopped_changes_group = lambda x:
                 np.select(
                     [
                     (~x.reset_group& ~x.reset_group_lead),
@@ -440,6 +537,13 @@ def decompose_mov(
                     ]
                 )
         )
+    )
+        
+    # Reset to be based on changes in those values
+    rawnav['stopped_changes_collapse'] = (
+    	rawnav
+    	.groupby(['filename','index_run_start'])['stopped_changes_group']
+    	.transform(lambda x: x.diff().ne(0).cumsum())
     )
 
     #### Identify if stopped for pax

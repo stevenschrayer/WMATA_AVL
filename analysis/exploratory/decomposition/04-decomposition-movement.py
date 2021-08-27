@@ -157,9 +157,11 @@ rawnav_fil9 = wr.match_stops(rawnav_fil8, stop_index)
 #     )
 # )
 
-# 
-rawnav_fil10 = (
-    rawnav_fil9
+# this also associates accel/decel with a stop, so we probably need to fix that too
+rawnav_fil10 = wr.create_stop_segs(rawnav_fil9)
+
+rawnav_fil11 = (
+    rawnav_fil10
     .groupby(['filename','index_run_start'])
     .apply(lambda x: wr.reset_odom(x))
 )
