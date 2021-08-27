@@ -36,6 +36,216 @@ def reset_odom(
     
     return(rawnav)
 
+def match_stops(
+    rawnav,
+    stop_index
+    ):
+    
+    # TODO: need to consider cases where it's not the first stop that matches
+    # maybe there's a default odometer reading at each stop in a pattern, and you 
+    # start at that if you didn't match sooner.
+    
+    #### Find the nearest point to any stop
+    # NOTE: somehow all of the trips we tested on didn't have stops here, so we 
+    # address later.
+    # This adds a column 'stop_id_loc'
+    rawnav = (
+        rawnav
+        .merge(
+            stop_index
+            .filter(items = ['filename','index_run_start','index_loc','stop_id'])
+            .rename(columns = {'stop_id' : 'stop_id_loc'}),
+            left_on = ['filename','index_run_start','index_loc'],
+            right_on = ['filename','index_run_start','index_loc'],
+            how = "left"
+        )
+    )
+    
+    # TODO: in enterprise land, we should make sure this isn't possible
+    # if a trip has no matched stops, we drop the trip at this point, i guess.
+    rawnav = (
+        rawnav
+        .groupby(['filename','index_run_start'])
+        .filter(
+            lambda x: any(x.stop_id_loc.notna())    
+        )    
+    )
+    
+    #### Associate stop_ids to groups
+    # Our overall goal is to build a crosswalk between filename, index_run_start, 
+    #stopped_changes_collapsed and the stop_id 
+    # that we'll rejoin to the main table.
+    
+    # Some of this is a little overdone because there's a 
+    # possibility that stopped_changes_collapsed falls close-ish to two different stop points,
+    # and given the wide variety of cases we'll find, i'm trying to be more careful. That's 
+    # where this kind of iteration falls in.
+    
+    # Setup Iteration
+    stop_index_forgrp = (
+        stop_index
+        .rename({'stop_id': 'stop_id_group'}, axis = 'columns')
+        # we need index_loc at the end, but we will drop it from some interim joins
+        .filter(['filename','index_run_start','stop_id_group','odom_ft_stop','index_loc'])
+        .sort_values(['odom_ft_stop'])
+    )
+    
+    rawnav_fil = rawnav.copy()
+    
+    query_list = [
+        'stop_decomp == "doors_on_O_S"',
+        'door_case == "doors"',
+        'door_case == "nodoors"'
+    ]
+    
+    # create a blank dictionary for DFs we'll concatenate later
+    stopid_stopped_changes_xwalk_dict = {}  
+    # Run Iteration
+    for thequery in query_list:
+        rawnav_stopareas = (
+            rawnav_fil.query(thequery)
+        )
+
+        rawnav_stopareas_idd = (
+            rawnav_stopareas
+            .pipe(
+                pd.merge_asof,
+                    right = stop_index_forgrp.drop(columns = ['index_loc']),
+                    by = ['filename','index_run_start'],
+                    left_on = ['odom_ft'],
+                    right_on = ['odom_ft_stop'],
+                    direction = "nearest"
+            )
+        )
+    
+        # chuck cases where the nearest stop is not within 200 ft. this is arbitrary
+        # if there are multiple possible matches, pick the one that has the minimum distance
+        # and if there are still multiple matches, pick the first.
+        
+        rawnav_stopareas_idd_fil = (
+            rawnav_stopareas_idd
+            .assign(odom_ft_stop_diff = lambda x: abs(x.odom_ft_stop - x.odom_ft))
+            .groupby(['filename','index_run_start','stopped_changes_collapse'])
+            .apply(lambda x: x.loc[x.odom_ft_stop_diff.le(200) & (x.odom_ft_stop_diff == min(x.odom_ft_stop_diff))])
+            .drop_duplicates(
+                subset = ['filename','index_run_start','stopped_changes_collapse','odom_ft'],
+                keep = 'first'
+            )
+            .reset_index(drop = True)
+            # if you happened to have two sets of stopped_changes_collapse join to same
+            # stop_id, now you need to pick one.
+            # this happened on rawnav04475210210.txt-4279 at 32089
+            .sort_values(['filename','index_run_start','stop_id_group','odom_ft_stop_diff'])
+            .drop_duplicates(
+                subset = ['filename','index_run_start','stop_id_group'],
+                keep = 'first'
+            )
+            .filter(
+                ['filename','index_run_start','stopped_changes_collapse','stop_id_group'],
+                axis = "columns"
+            )
+        )
+        # append to the dictionary based on the query name
+        stopid_stopped_changes_xwalk_dict[thequery] = rawnav_stopareas_idd_fil
+
+        # remove items we've already matched
+        stop_index_forgrp = (
+            stop_index_forgrp
+            .pipe(
+                ll.anti_join,
+                rawnav_stopareas_idd_fil,
+                on = ['filename','index_run_start','stop_id_group']
+            )
+        )
+        
+        rawnav_fil = (
+            rawnav_fil
+            .pipe(
+                ll.anti_join,
+                rawnav_stopareas_idd_fil,
+                on = ['filename','index_run_start','stopped_changes_collapse']
+            )
+        )
+    
+    # Combine results
+    stopid_stopped_changes_xwalk = pd.concat(stopid_stopped_changes_xwalk_dict.values())    
+    # need to de-duplicate one more time i think...
+    
+    # Join
+    rawnav = (
+        rawnav
+        .merge(
+            stopid_stopped_changes_xwalk,
+            on = ['filename','index_run_start','stopped_changes_collapse'],
+            how = "left",
+            suffixes = ('','_xwalk')
+        )
+        # this seems duplicative, but we're only joining on the ones that
+        # didn't join to a stop in order to indicate passups
+        .merge(
+            stop_index_forgrp
+            .filter(items = ['filename','index_run_start','index_loc','stop_id_group']),
+            left_on = ['filename','index_run_start','index_loc'],
+            right_on = ['filename','index_run_start','index_loc'],
+            how = "left",
+            suffixes = ('','_pu')
+        )
+        .assign(
+            stop_id_group = lambda x: 
+                np.where(
+                   x.door_case.isna(),
+                   x.stop_id_group_pu,
+                   x.stop_id_group
+                ),
+            stop_case = lambda x: np.select(
+                [
+                    x.stop_id_group.notna() & x.door_case.eq('doors'),
+                    x.stop_id_group.isna() & x.door_case.eq('nodoors'),
+                    x.stop_id_group.notna() & x.door_case.isna()
+                ],
+                [
+                    'atstop',
+                    'notstop',
+                    'passstop'
+                ],
+                default = pd.NA
+            )    
+        )
+        .assign(
+            stop_decomp_ext = lambda x:
+                np.where(
+                    x.stop_case.isin(['atstop','notstop']),
+                    x.stop_case + "_" + x.stop_decomp,
+                    x.stop_case
+                )
+        )
+        .drop(columns = ['stop_id_group_pu'])
+        .sort_values(['filename','index_run_start','index_loc'])
+    )
+    
+    
+    # TODO: add tests or checks that if we matched 15 stops to a file in stop_index,
+    # then we have 15 unique stop groups that got associated in some way. shoudl be guaranteed
+    # by our methods but should check.
+    # TODO: check that no two sets of stopped pings in our data were joined to the same 
+    # stop_id. That would be weird and bad. should be prevented by our methods.
+    # TODO: if it's even possible for a stopped_changes_collapse thing to come close enough to
+    # two pings, we should look into that. Our methods are probably addressing this but should 
+    # check.
+        
+    return(rawnav)
+
+def pick_near_stop(
+        rawnav_grp
+    ):
+
+    breakpoint()
+    
+    
+    
+    return(rawnav_grp)
+    
+
 #### Decomposition
 def decompose_mov(
     rawnav,
@@ -294,7 +504,7 @@ def decompose_mov(
             how = 'left'
         )
         .assign(
-            relative_to_dwell = lambda x: np.select(
+            relative_to_firstdoor = lambda x: np.select(
                 [
                     x.door_state.eq('C') & x.door_changes.le(x.door_open_min),
                     x.door_state.eq('O') & x.door_changes.eq(x.door_open_min),
@@ -307,7 +517,7 @@ def decompose_mov(
                     "post",
                     # we use a text NA here to distinguish from cases where 
                     # vehicle is not at a stop, period
-                    "NA" 
+                    "na" 
                 ],
                 default = pd.NA          
             )    
@@ -323,7 +533,6 @@ def decompose_mov(
         )
     )
         
-    # TODO: update decomposition based on whether the vehicle stopped at all in the group
     rawnav = (
         rawnav
         .assign(
@@ -335,15 +544,28 @@ def decompose_mov(
                 )
         )
         .assign(
-            stop_type = lambda x:
+            door_case = lambda x: 
                 np.select(
                     [
                     x.basic_decomp.eq('stopped') & x.any_door_open.eq(True),
                     x.basic_decomp.eq('stopped') & x.any_door_open.eq(False)
                     ],
                     [
-                    "pax",
-                    "nopax"
+                    "doors",
+                    "nodoors"
+                    ],
+                    default = pd.NA
+                ),
+            # Not strictly needed but i wanted this var
+            pax_activity = lambda x:
+                np.select(
+                    [
+                        x.door_state.eq("O") & x.row_before_apc.eq(1),
+                        x.door_state.eq("O") & x.row_before_apc.eq(0)
+                    ],
+                    [
+                        "pax",
+                        "nopax"
                     ],
                     default = pd.NA
                 )
@@ -352,7 +574,7 @@ def decompose_mov(
             stop_decomp = lambda x: 
                 np.where(
                     x.basic_decomp.eq('stopped'),
-                    x.stop_type + "_" + x.relative_to_dwell + "_" + x.veh_state_calc + "_" + x.door_state,
+                    x.door_case + "_" + x.relative_to_firstdoor + "_" + x.door_state + "_" + x.veh_state_calc,
                     pd.NA                    
                 )
         )
@@ -604,7 +826,6 @@ def agg_sec(rawnav):
              'heading',
              'door_state',
              'veh_state',
-             'row_before_apc',
              'lat',
              'long',
              'lat_raw',
@@ -714,6 +935,9 @@ def interp_over_sec(rawnav, interp_method = "index"):
     
     return(rawnav)
 
+
+#### Speed Calcs
+
 def calc_speed(rawnav):
     
     #### lag values
@@ -818,10 +1042,8 @@ def calc_accel_jerk(rawnav, groupvars = ['filename','index_run_start'], fps_col 
     )
     
     return(rawnav)
-    
 
-#### Speed Calcs
-
+#### Smoothing Functions
 # borrowed from : https://scipy-cookbook.readthedocs.io/items/SavitzkyGolay.html
 # and inspired by https://stackoverflow.com/questions/20618804/how-to-smooth-a-curve-in-the-right-way
 def savitzky_golay(y, window_size, order, deriv=0, rate=1):

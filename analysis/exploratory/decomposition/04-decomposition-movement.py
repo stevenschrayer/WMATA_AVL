@@ -144,3 +144,22 @@ rawnav_fil8 = (
      )
 )
 
+# Identify the stops in the decomp
+rawnav_fil9 = wr.match_stops(rawnav_fil8, stop_index)
+
+# TODO: would normally include some test or filter that if there was a door open event, it was 
+# matched to a stop to make sure our stop inputs and such are appropriate
+# door_open_no_stop = (
+#     rawnav_fil9
+#     .groupby(['filename','index_run_start','stopped_changes_collapse'])
+#     .filter(
+#         lambda x: any(x.stop_type.eq('pax')) & any(x.stop_id_group.isna())       
+#     )
+# )
+
+# 
+rawnav_fil10 = (
+    rawnav_fil9
+    .groupby(['filename','index_run_start'])
+    .apply(lambda x: wr.reset_odom(x))
+)

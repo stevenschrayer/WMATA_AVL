@@ -213,8 +213,36 @@ def semi_join(left,right,on):
         .merge(
             right,
             how = 'inner',
-            on = on
+            on = on,
+            suffixes = ("","_y")
         )
+        .reindex(left.columns, axis = "columns")
+    )
+
+    return(out)
+
+def anti_join(left,right,on):
+    """
+    # modified from here:
+    # https://gist.github.com/sainathadapa/eb3303975196d15c73bac5b92d8a210f#file-anti_join-py-L1
+    Parameters
+    ----------
+    left : pd.DataFrame,
+        records to keep...
+    right: pd.DataFrame,
+        ...if not present here
+    on: list,
+        list of columns present in both dataframes to filter on
+    Returns
+    -------
+    df : pd.DataFrame,
+        all records of left that are not found in right
+    """
+
+    out = pd.merge(left=left, right=right, how='left', indicator=True, on=on)
+    out = (
+        out
+        .loc[out._merge == 'left_only', :]
         .reindex(left.columns, axis = "columns")
     )
 
