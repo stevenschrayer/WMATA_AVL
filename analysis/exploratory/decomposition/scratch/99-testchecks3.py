@@ -159,3 +159,43 @@ rawnav_fil8.to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov11.c
 
 rawnav_fil8.to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov11_all.csv"))
 
+rawnav_fil11.to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov12_all.csv"))
+
+testfile = "rawnav06491210217.txt"
+testindex = 13725
+
+testcase = (
+    rawnav_fil10
+    .query('filename == @testfile & index_run_start == @testindex')
+    .set_index(keys = ['index_loc'])
+)
+
+testfile = 'rawnav04476210210.txt'
+testindex = 23315
+
+testcase = (
+    rawnav_fil10
+    .query('filename == @testfile & index_run_start == @testindex')
+    .set_index(keys = ['index_loc'])
+)
+
+test9 = (
+    rawnav_fil8
+    .query('filename == @testfile & index_run_start == @testindex')
+    .pipe(
+        wr.match_stops,
+        stop_index
+    )
+)
+
+
+testfile = "rawnav06168210225.txt"
+testindex = 12267
+
+testcase = (
+    rawnav_fil10
+    .query('filename == @testfile & index_run_start == @testindex')
+    .set_index(keys = ['index_loc'])
+)
+
+rawnav_fil11.to_csv(os.path.join(path_sp,"Data","01-Interim","test_decomp_mov13_all.csv"))

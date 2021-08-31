@@ -163,5 +163,5 @@ rawnav_fil10 = wr.create_stop_segs(rawnav_fil9)
 rawnav_fil11 = (
     rawnav_fil10
     .groupby(['filename','index_run_start'])
-    .apply(lambda x: wr.reset_odom(x))
+    .apply(lambda x: wr.reset_odom(x,indicator_val = 58, indicator_var = 'stop_id_group'))
 )

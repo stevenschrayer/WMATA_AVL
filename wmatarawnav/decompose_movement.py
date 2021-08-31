@@ -19,9 +19,23 @@ import warnings
 def reset_odom(
     rawnav,
     indicator_var = "stop_id_loc",
+    indicator_val = None,
     reset_vars = ['odom_ft','sec_past_st']
     ):
-    reset_idx = rawnav[indicator_var].first_valid_index() 
+    
+    rawnav = rawnav.set_index('index_loc')
+    
+    if indicator_val == None:
+        reset_idx = rawnav[indicator_var].first_valid_index() 
+    else:
+        reset_idx = rawnav.loc[rawnav[indicator_var] == indicator_val].first_valid_index()
+        
+    if reset_idx == None:
+        # TODO: oddly, there are a lot of pings that should've been matched to 
+        # a nearby stop but weren't. For now, i'm just going to skip these,
+        # but we need to look at the processing code more.
+        print("ditching: " + rawnav.filename.iloc[1] + "_" + str(rawnav.index_run_start.iloc[1]))
+        return(None)
     
     if reset_idx == None:
         case = rawnav.filename.iloc[0] + "-" + str(rawnav.index_run_start.iloc[0])
@@ -49,6 +63,9 @@ def match_stops(
     # NOTE: somehow all of the trips we tested on didn't have stops here, so we 
     # address later.
     # This adds a column 'stop_id_loc'
+    # TODO: somehow this isn't joining quite right on index_loc, and i'm not
+    # sure why. Will need to revist processing code, but for now, may not rely on
+    # stop_id_loc much
     rawnav = (
         rawnav
         .merge(
