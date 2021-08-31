@@ -316,15 +316,27 @@ def create_stop_segs(
             how = "left",
             suffixes = ('','_next')            
         )
+        # these fills aren't strictly speaking accurate, but we want to cover the 
+        # case where the look ahead and behind is not NA for first and last case
+        .assign(
+            door_case_prev = lambda x: x.door_case_prev.fillna(value = 'nodoors'),
+            door_case_next = lambda x: x.door_case_next.fillna(value = 'nodoors')
+        )
+    )
+    
+    rawnav = (
+        rawnav
         .assign(
             basic_decomp_ext = lambda x: np.select(
                 [
                     x.basic_decomp.eq('accel'),
-                    x.basic_decomp.eq('decel')
+                    x.basic_decomp.eq('decel'),
+                    x.basic_decomp.eq('stopped')
                 ],
                 [
                     x.basic_decomp + "_" + x.door_case_prev,
-                    x.basic_decomp + "_" + x.door_case_next
+                    x.basic_decomp + "_" + x.door_case_next,
+                    x.basic_decomp + "_" + x.door_case
                 ],
                 default = x.basic_decomp
             )
@@ -457,7 +469,7 @@ def decompose_mov(
     # When we see short bits of movement around the stop (such as traffic delaying entry to
     # stop area or creeping from a near-side stop to the signal) we want to combine those into
     # one chunk. We first look for the earliest point where the bus stopped in a chunk of 
-    # stopped time. 
+    # stopped time.   
     rawnav_stopped_lims = (
         rawnav
         .loc[rawnav.is_stopped]
@@ -482,10 +494,10 @@ def decompose_mov(
         .assign(
             # TODO: we should probably handle this in a more spaitally sensitive fashion,
             # but will probably need to use threhsolds like this in any case. The idea here
-            # is that we want to collapse stop activity wihtin 100 feet to one case on the notion
+            # is that we want to collapse stop activity wihtin 150 feet to one case on the notion
             # that hte bus is probably just pulling forward from bus stop to the intersection 
             # stop bar/crosswalk
-            near_stop = lambda x: x.min_odom - x.odom_ft <= 100, 
+            near_stop = lambda x: x.min_odom - x.odom_ft <= 150
         )
     )
 
@@ -510,39 +522,12 @@ def decompose_mov(
         )   
     )
     
-    rawnav = rawnav.assign(reset_group = lambda x: x.all_other_delay & x.all_near_stop)
-    
-    # Now that we've identified items that need to be reset into an earlier group, 
-    # we shift around some identifiers and values to do so.
-    rawnav['reset_group_lead'] = (
-        rawnav
-        .groupby(['filename','index_run_start'], sort = False)['reset_group']
-        .shift(1, fill_value = False)
-    )
-    
-    rawnav = (
-        rawnav
-        .assign(
-            stopped_changes_group = lambda x:
-                np.select(
-                    [
-                    (~x.reset_group& ~x.reset_group_lead),
-                    x.reset_group,
-                    x.reset_group_lead
-                    ],
-                    [
-                    x.stopped_changes,
-                    x.stopped_changes - 1,
-                    x.stopped_changes - 2
-                    ]
-                )
-        )
-    )
+    rawnav = rawnav.assign(reset_group = lambda x: (x.all_other_delay & x.all_near_stop) | x.is_stopped)
         
     # Reset to be based on changes in those values
     rawnav['stopped_changes_collapse'] = (
     	rawnav
-    	.groupby(['filename','index_run_start'])['stopped_changes_group']
+    	.groupby(['filename','index_run_start'])['reset_group']
     	.transform(lambda x: x.diff().ne(0).cumsum())
     )
 
@@ -701,7 +686,6 @@ def decompose_mov(
             "all_other_delay",
             "all_near_stop",
             "reset_group",
-            "reset_group_lead",
             "door_state_closed",
             "door_open_min",
             "door_open_max"
