@@ -239,7 +239,6 @@ def match_stops(
         .sort_values(['filename','index_run_start','index_loc'])
     )
     
-    
     # TODO: add tests or checks that if we matched 15 stops to a file in stop_index,
     # then we have 15 unique stop groups that got associated in some way. shoudl be guaranteed
     # by our methods but should check.

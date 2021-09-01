@@ -14,7 +14,7 @@ source('99-movement-explore-setup.R', local = TRUE)
 ```{r}
 rawnav_decomp_all <- 
   load_rawnav(
-    file.path(path_data,"test_decomp_mov14_all.csv")
+    file.path(path_data,"test_decomp_mov15_all.csv")
   ) 
 
 ```
@@ -234,6 +234,13 @@ penn_6_delay3 <-
   )
 
 penn_6_delay3
+```
+```{r}
+most_post_stop_delay3 %>%
+  filter(
+    stop_id_group == 22373
+  ) %>%
+  pull(post)
 ```
 
 
