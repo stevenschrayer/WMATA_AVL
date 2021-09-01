@@ -132,15 +132,17 @@ def match_stops(
             )
         )
     
-        # chuck cases where the nearest stop is not within 200 ft. this is arbitrary
+        # chuck cases where the nearest stop is not within 100 ft. this is arbitrary
         # if there are multiple possible matches, pick the one that has the minimum distance
         # and if there are still multiple matches, pick the first.
+        # Changed from 200 ft to 100 ft after some intersections were associated with farside
+        # stops when the farside stop was passed up
         
         rawnav_stopareas_idd_fil = (
             rawnav_stopareas_idd
             .assign(odom_ft_stop_diff = lambda x: abs(x.odom_ft_stop - x.odom_ft))
             .groupby(['filename','index_run_start','stopped_changes_collapse'])
-            .apply(lambda x: x.loc[x.odom_ft_stop_diff.le(200) & (x.odom_ft_stop_diff == min(x.odom_ft_stop_diff))])
+            .apply(lambda x: x.loc[x.odom_ft_stop_diff.le(100) & (x.odom_ft_stop_diff == min(x.odom_ft_stop_diff))])
             .drop_duplicates(
                 subset = ['filename','index_run_start','stopped_changes_collapse','odom_ft'],
                 keep = 'first'
@@ -213,14 +215,14 @@ def match_stops(
                 ),
             stop_case = lambda x: np.select(
                 [
-                    x.stop_id_group.notna() & x.door_case.eq('doors'),
-                    x.stop_id_group.isna() & x.door_case.eq('nodoors'),
-                    x.stop_id_group.notna() & x.door_case.isna()
+                    x.stop_id_group.notna() & x.door_case.notna(),
+                    x.stop_id_group.notna() & x.door_case.isna(),
+                    x.stop_id_group.isna() & x.door_case.notna()
                 ],
                 [
                     'atstop',
-                    'notstop',
-                    'passstop'
+                    'passstop',
+                    'notatstop'
                 ],
                 default = pd.NA
             )    
@@ -228,7 +230,7 @@ def match_stops(
         .assign(
             stop_decomp_ext = lambda x:
                 np.where(
-                    x.stop_case.isin(['atstop','notstop']),
+                    x.stop_case.isin(['atstop','notatstop']),
                     x.stop_case + "_" + x.stop_decomp,
                     x.stop_case
                 )
@@ -508,10 +510,11 @@ def decompose_mov(
         .assign(
             # TODO: we should probably handle this in a more spaitally sensitive fashion,
             # but will probably need to use threhsolds like this in any case. The idea here
-            # is that we want to collapse stop activity wihtin 150 feet to one case on the notion
+            # is that we want to collapse stop activity wihtin 100 feet to one case on the notion
             # that hte bus is probably just pulling forward from bus stop to the intersection 
-            # stop bar/crosswalk
-            near_stop = lambda x: x.min_odom - x.odom_ft <= 150
+            # stop bar/crosswalk. 150 feet proved a little long, as some farside
+            # stops would catch the previous stop at an intersection.
+            near_stop = lambda x: x.min_odom - x.odom_ft <= 100
         )
     )
 
