@@ -37,16 +37,13 @@ def reset_odom(
         print("ditching: " + rawnav.filename.iloc[1] + "_" + str(rawnav.index_run_start.iloc[1]))
         return(None)
     
-    if reset_idx == None:
-        case = rawnav.filename.iloc[0] + "-" + str(rawnav.index_run_start.iloc[0])
-        warnings.warn('No stop id found for ' + case)
-        return(rawnav)
-    
     for var in reset_vars:
         # keep a copy of original...
         rawnav[(var + "_og")] = rawnav[var]
         # ...but overwrite the original for convenience
         rawnav[(var)] = rawnav[var] - rawnav.loc[reset_idx,var]
+    
+    rawnav = rawnav.reset_index()
     
     return(rawnav)
 
