@@ -153,14 +153,6 @@ del rawnav_rt
 del rawnav_fil_rt
 
 
-
-
-
-# %% Get one record per second
-
-# This function 
-
-
 # %% Identify the stop window
 
 rawnav_window = (
@@ -176,6 +168,13 @@ del rawnav_fil
 
 
 # %% Reset headings so they never loop back around zero
+
+# The idea here is to make the difference in between heading values always
+# fall between -180 and +180 degrees. For example, we want the change from 355 
+# to 5 degrees to be +10 degrees, not -350 degrees.
+
+# The resulting heading values from this process can easily be transformed 
+# back into their original values by using modulo 360.
 
 # Lag the heading values
 rawnav_window[['heading_lag']] = (
@@ -193,11 +192,14 @@ rawnav_reset_heading = (
                     #If the difference is less than 180 degrees, do a normal difference
                     abs(x.heading - x.heading_lag) <= 180,
                     x.heading - x.heading_lag,
+                    #If the difference is greater than 180, do one of two things:
                     np.where(
                         x.heading > x.heading_lag,
-                        # If the heading is a larger value, the change is negative. Add 360 to the previous value 
+                        # If the heading is a larger value than the previous one, the change is actually negative. 
+                        # Add 360 to the previous value so we get a difference that falls between -180 and 0.
                         x.heading - (x.heading_lag + 360),
-                        # If the heading is a smaller value, the change is positive so just use modulo
+                        # If the heading is a smaller value than the previous one, the change is actually positive.
+                        # Just use modulo. Alternatively you could add 360 to the difference for the same result.
                         (x.heading - x.heading_lag)%360
                     )
             )
@@ -217,8 +219,9 @@ rawnav_reset_heading['heading_new'] = (
 # %% Plot sample data
     
 heading_sample = (
-    rawnav_reset_heading[rawnav_reset_heading.index_run_start == 9306]
-    .query('filename == "rawnav07225210305.txt"')
+#    rawnav_reset_heading[rawnav_reset_heading.index_run_start == 9306]
+    rawnav_heading3[rawnav_heading3.index_run_start == 14528]
+#    .query('filename == "rawnav07225210305.txt"')
     .assign(stop_zone = lambda x: 
                 np.where(
                     x.stop_window_area.isna(),
@@ -259,10 +262,41 @@ rawnav_heading2 = agg_sec(rawnav_heading)
 rawnav_heading3 = interp_heading_over_sec(rawnav_heading2)
 
 
+# %% Smooth heading values?
+
+rawnav_heading_sm = smooth_angular_speed(rawnav_heading3[rawnav_heading3.index_run_start == 14528])
+
+# %% Plot sample data
+    
+heading_sample_sm = (
+#    rawnav_reset_heading[rawnav_reset_heading.index_run_start == 9306]
+    rawnav_heading_sm[rawnav_heading_sm.index_run_start == 14528]
+#    .query('filename == "rawnav07225210305.txt"')
+    .assign(stop_zone = lambda x: 
+                np.where(
+                    x.stop_window_area.isna(),
+                    "no",
+                    "stop_area"
+                ),
+            stop_zone_stop = lambda x:
+                np.where(
+                    x.stop_id.isna(),
+                    x.stop_zone,
+                    "stop"
+                )
+    )
+)
+
+fig = px.scatter(x = heading_sample_sm.odom_ft, 
+                 y = heading_sample_sm.heading_sm,
+                 color = heading_sample_sm.stop_zone_stop)
+fig.show()
+
+
 # %% Calculate angular speed
 
 # these are not the rolling vals, though i think we will want to include those before long.
-rawnav_heading4 = calc_angular_speed(rawnav_heading3)
+rawnav_heading4 = calc_angular_speed(rawnav_heading3[rawnav_heading3.index_run_start == 14528])
 
 
 
@@ -289,6 +323,37 @@ fig = px.scatter(x = speed_sample.odom_ft,
                  y = speed_sample.deg_sec_next,
                  color = speed_sample.stop_zone_stop)
 fig.show()
+
+
+# %% Smooth speed
+
+rawnav_heading_smooth = smooth_angular_speed(rawnav_heading4)
+
+
+# %% Visualize sample again
+
+speed_sample_smooth = (
+    rawnav_heading_smooth[rawnav_heading_smooth.index_run_start == 14528]
+    .assign(stop_zone = lambda x: 
+                np.where(
+                    x.stop_window_area.isna(),
+                    "no",
+                    "stop_area"
+                ),
+            stop_zone_stop = lambda x:
+                np.where(
+                    x.stop_id.isna(),
+                    x.stop_zone,
+                    "stop"
+                )
+    )
+)
+
+fig = px.scatter(x = speed_sample_smooth.odom_ft, 
+                 y = speed_sample_smooth.deg_sec_next_sm,
+                 color = speed_sample_smooth.stop_zone_stop)
+fig.show()
+
 
 
 # %% Determine the heading at each stop
