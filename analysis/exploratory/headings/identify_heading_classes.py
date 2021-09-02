@@ -216,6 +216,24 @@ rawnav_reset_heading['heading_new'] = (
     .cumsum()        
 )
 
+
+# %% Prepare data for speed calculation
+
+# Replace the heading column with the new heading values
+rawnav_heading = rawnav_reset_heading.assign(heading = rawnav_reset_heading[['heading_new']])
+
+# aggregate so we only have one observation for each second - this uses the 'last' heading observation
+rawnav_heading2 = agg_sec(rawnav_heading)
+
+# quick check of how many pings we will have repeated seconds values
+(rawnav_heading2.shape[0] - rawnav_heading.shape[0]) / rawnav_heading.shape[0]
+
+# This is a separate step again; there are some places where we'll want to interpolate that
+# aren't just the ones where we aggregated seconds. In general, we'll probably want to 
+# revisit the aggregation/interpolation process, so I'm going to try not to touch this too much
+# more for now.
+rawnav_heading3 = interp_column_over_sec(rawnav_heading2[rawnav_heading2.index_run_start == 14528], 'heading')
+
 # %% Plot sample data
     
 heading_sample = (
@@ -244,27 +262,11 @@ fig.show()
 
 
 
-# %% Prepare data for speed calculation
-
-# Replace the heading column with the new heading values
-rawnav_heading = rawnav_reset_heading.assign(heading = rawnav_reset_heading[['heading_new']])
-
-# aggregate so we only have one observation for each second - this uses the 'last' heading observation
-rawnav_heading2 = agg_sec(rawnav_heading)
-
-# quick check of how many pings we will have repeated seconds values
-(rawnav_heading2.shape[0] - rawnav_heading.shape[0]) / rawnav_heading.shape[0]
-
-# This is a separate step again; there are some places where we'll want to interpolate that
-# aren't just the ones where we aggregated seconds. In general, we'll probably want to 
-# revisit the aggregation/interpolation process, so I'm going to try not to touch this too much
-# more for now.
-rawnav_heading3 = interp_heading_over_sec(rawnav_heading2)
-
-
 # %% Smooth heading values?
 
-rawnav_heading_sm = smooth_angular_speed(rawnav_heading3[rawnav_heading3.index_run_start == 14528])
+rawnav_heading_sm = smooth_rawnav_column(rawnav_heading3[rawnav_heading3.index_run_start == 14528],
+                                         smooth_col = 'heading',
+                                         window_size = 11)
 
 # %% Plot sample data
     
@@ -296,7 +298,7 @@ fig.show()
 # %% Calculate angular speed
 
 # these are not the rolling vals, though i think we will want to include those before long.
-rawnav_heading4 = calc_angular_speed(rawnav_heading3[rawnav_heading3.index_run_start == 14528])
+rawnav_heading4 = calc_rawnav_speed(rawnav_heading_sm[rawnav_heading_sm.index_run_start == 14528], 'heading_sm')
 
 
 
@@ -320,14 +322,16 @@ speed_sample = (
 )
 
 fig = px.scatter(x = speed_sample.odom_ft, 
-                 y = speed_sample.deg_sec_next,
+                 y = speed_sample.heading_sm_speed_next,
                  color = speed_sample.stop_zone_stop)
 fig.show()
 
 
 # %% Smooth speed
 
-rawnav_heading_smooth = smooth_angular_speed(rawnav_heading4)
+rawnav_heading_smooth = smooth_rawnav_column(rawnav_heading4,
+                                             smooth_col = 'heading_sm_speed_next',
+                                             window_size = 11)
 
 
 # %% Visualize sample again
@@ -350,32 +354,9 @@ speed_sample_smooth = (
 )
 
 fig = px.scatter(x = speed_sample_smooth.odom_ft, 
-                 y = speed_sample_smooth.deg_sec_next_sm,
+                 y = speed_sample_smooth.heading_sm_speed_next_sm,
                  color = speed_sample_smooth.stop_zone_stop)
 fig.show()
-
-
-
-# %% Determine the heading at each stop
-
-# Range is from 0 to 360, there are no negative values
-heading_range = [rawnav_reset_heading.heading_new.min(), rawnav_reset_heading.heading_new.max()]
-
-heading_stop = (
-    rawnav_reset_heading
-    .dropna(subset = ['stop_id']) 
-    .groupby(['route','pattern','stop_id'])
-    .agg(
-        heading_min = ('heading_new', 'min'),
-        heading_p05 = ('heading_new', lambda x: x.quantile(.05)),
-        heading_med = ('heading_new', 'median'),
-        heading_p95 = ('heading_new', lambda x: x.quantile(.95)),
-        heading_max = ('heading_new', 'max'),
-        heading_mean = ('heading_new', 'mean'),
-    )
-    .reset_index()
-)
-
 
 
 
