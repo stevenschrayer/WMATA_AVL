@@ -489,24 +489,25 @@ def savitzky_golay(y, window_size, order, deriv=0, rate=1):
     m = np.linalg.pinv(b).A[deriv] * rate**deriv * factorial(deriv)
     # pad the signal at the extremes with
     # values taken from the signal itself
+#    breakpoint()
     firstvals = y[0] - np.abs( y[1:half_window+1][::-1] - y[0] )
     lastvals = y[-1] + np.abs(y[-half_window-1:-1][::-1] - y[-1])
     y = np.concatenate((firstvals, y, lastvals))
     return np.convolve( m[::-1], y, mode='valid')
 
-def expand_rawnav(rawnav_ti):
+def expand_rawnav_heading(rawnav_ti):
     
     rawnav_ti_expand = (
         pd.DataFrame(
             {'sec_past_st': np.arange(rawnav_ti.sec_past_st.min(), rawnav_ti.sec_past_st.max(),1 )} 
         )
         .merge(
-             rawnav_ti[['sec_past_st','fps_next']],
+             rawnav_ti[['sec_past_st','deg_sec_next']],
              on = 'sec_past_st',
              how = 'left'
         )
         .assign(
-            fps_next = lambda x: x.fps_next.ffill(),
+            deg_sec_next = lambda x: x.deg_sec_next.ffill(),
         )
     )
     
@@ -515,21 +516,21 @@ def expand_rawnav(rawnav_ti):
 # TODO: consider an approach that will let us smooth other things too
 # for each trip instance, this expands the data, applies the savitzy golay method, and 
 # recalculates accel and jerk
-def apply_smooth(rawnav_ti):
-    rawnav_ex = expand_rawnav(rawnav_ti)
+def apply_smooth_heading(rawnav_ti):
+    rawnav_ex = expand_rawnav_heading(rawnav_ti)
+#    breakpoint()
+    rawnav_ex['deg_sec_next_sm'] = savitzky_golay(rawnav_ex.deg_sec_next.to_numpy(), 21, 3)    
     
-    rawnav_ex['fps_next_sm'] = savitzky_golay(rawnav_ex.fps_next.to_numpy(), 21, 3)    
-    
-    rawnav_ex = (
-        rawnav_ex
-        .assign(
-            fps_next_sm = lambda x: np.where(
-                x.fps_next_sm.le(0),
-                0,
-                x.fps_next_sm
-            )    
-        )    
-    )
+#    rawnav_ex = (
+#        rawnav_ex
+#        .assign(
+#            deg_sec_next_sm = lambda x: np.where(
+#                x.deg_sec_next_sm.le(0),
+#                0,
+#                x.deg_sec_next_sm
+#            )    
+#        )    
+#    )
     
     rawnav_ex = (
         rawnav_ex
@@ -537,9 +538,9 @@ def apply_smooth(rawnav_ti):
         # instance
         .assign(grp = 1)
         .pipe(
-            calc_accel_jerk,
+            calc_angular_accel,
             groupvars = ['grp'], 
-            fps_col = 'fps_next_sm'
+            speed_col = 'deg_sec_next_sm'
         )
         .drop(['grp'], axis = 'columns')
     )
@@ -548,15 +549,14 @@ def apply_smooth(rawnav_ti):
         rawnav_ti
         # drop the placeholder columns
         .drop(
-            ['fps_next_sm',
-             'accel_next',
-             'jerk_next'
+            ['deg_sec_next_sm',
+             'deg_accel_next'
              ],
             axis = 'columns'
         ),
         rawnav_ex
         .drop(
-            ['fps_next'],
+            ['deg_sec_next'],
             axis = "columns"
         ),
         on = ['sec_past_st'],
@@ -567,7 +567,7 @@ def apply_smooth(rawnav_ti):
 
 # this is a parent function that handles some placeholder column creation, gropuing, and applying
 # the smoothing function
-def smooth_speed(rawnav):
+def smooth_angular_speed(rawnav):
     
     # this requires interpolated data, according to internet
     # https://gis.stackexchange.com/questions/173721/reconstructing-modis-time-series-applying-savitzky-golay-filter-with-python-nump
@@ -576,13 +576,12 @@ def smooth_speed(rawnav):
         rawnav
         .assign(
             # i'm not sure if these placeholders are necessary or not
-            fps_next_sm = np.nan,
-            accel_next = np.nan,
-            jerk_next = np.nan
+            deg_sec_next_sm = np.nan,
+            deg_accel_next = np.nan
         )
         .groupby(['filename','index_run_start'],sort = False)
         .apply(
-            lambda x: apply_smooth(x)
+            lambda x: apply_smooth_heading(x)
         )
         # i'm not sure how the index changes, but oh well
         .reset_index(drop = True)
