@@ -19,17 +19,38 @@ from math import factorial
 
 #### interpolation functions
 # despite the name, this is called by interp_over_sec
-def interp_heading(x, deg_threshold = 1, fix_interp = True, interp_method = "index"):
-    # ft_threshold is how far outside the bands of observed odom_ft values we would allow. a little
+def interp_column(x, col_name, threshold = 1, fix_interp = True, interp_method = "index"):
+    # threshold is how far outside the bands of observed values we would allow. a little
     # wiggle room probbaly okay given how we understand these integer issues appearing
-    
+        
     x.set_index(['sec_past_st'], inplace = True)
     
     if (x.index.duplicated().any()):
         raise ValueError("sec_past_st shouldn't be duplicated at this point")
     else:
         # interpolate
-        x.heading = x.heading.interpolate(method = interp_method)
+        x[col_name] = x[col_name].interpolate(method = interp_method)
+        
+        # The _min and _max columns should already exist from calling agg_sec()
+        assign_statement1 = {col_name+'_low' : lambda x, thr = threshold : ((x[col_name] < (x[col_name+'_min'] - thr))),
+                             col_name+'_hi' : lambda x, thr = threshold : ((x[col_name] > (x[col_name+'_max'] + thr)))}        
+        
+        assign_statement2 = {col_name : lambda x, thr = threshold: np.select(
+                    [
+                        #I think we avoid evaluating other conditions 
+                        # if the first case is true
+                        x[col_name+'_low'].eq(False) & x[col_name+'_hi'].eq(False),
+                        x[col_name+'_low'],
+                        x[col_name+'_hi'],
+                    ],
+                    [
+                        x[col_name],
+                        x[col_name+'_min'] - thr,
+                        x[col_name+'_max'] + thr
+                    ],
+                    default = x[col_name] # this is probably overkill
+                    )   
+        }
         
         # test
         # Could probably fix some of this, but oh well
@@ -37,29 +58,10 @@ def interp_heading(x, deg_threshold = 1, fix_interp = True, interp_method = "ind
             x = (
                 x
                 .assign(
-                    heading_low = lambda x, deg = deg_threshold : (
-                        (x.heading < (x.heading_min - deg))
-                    ),
-                    heading_hi = lambda x, deg = deg_threshold : (
-                        (x.heading > (x.heading_max + deg))    
-                    )
+                    **assign_statement1
                 )
                 .assign(
-                    heading = lambda x, deg = deg_threshold: np.select(
-                    [
-                        #I think we avoid evaluating other conditions 
-                        # if the first case is true
-                        x.heading_low.eq(False) & x.heading_hi.eq(False),
-                        x.heading_low,
-                        x.heading_hi,
-                    ],
-                    [
-                        x.heading,
-                        x.heading_min - deg,
-                        x.heading_max + deg
-                    ],
-                    default = x.heading # this is probably overkill
-                    )    
+                    **assign_statement2 
                 )
                 
             )
@@ -68,9 +70,9 @@ def interp_heading(x, deg_threshold = 1, fix_interp = True, interp_method = "ind
         x = (
             x
             .assign(
-                odom_interp_fail = lambda x, deg = deg_threshold : (
-                    (x.heading < (x.heading_min - deg)) |
-                    (x.heading > (x.heading_max + deg))
+                interp_fail = lambda x, thr = threshold : (
+                    (x[col_name] < (x[col_name+'_min'] - thr)) |
+                    (x[col_name] > (x[col_name+'_max'] + thr))
                 )
             )
         )
@@ -256,7 +258,7 @@ def agg_sec(rawnav):
     
     return(rawnav)
 
-def interp_heading_over_sec(rawnav, interp_method = "index"):
+def interp_column_over_sec(rawnav, col_name, interp_method = "index"):
     
     #### first, set as NA the values that we plan to interpolate over.
     # TODO: In the future, we probably will not want to be dropping data,
@@ -278,6 +280,12 @@ def interp_heading_over_sec(rawnav, interp_method = "index"):
         .shift(1)
     )
     
+    assign_statement1 = {col_name : lambda x: np.where(x.secs_next.eq(2) & x.secs_last.eq(1),
+                                                      np.nan,
+                                                      x[col_name]
+                                                      )
+            }
+    
     rawnav = (
         rawnav
         .assign(
@@ -285,25 +293,23 @@ def interp_heading_over_sec(rawnav, interp_method = "index"):
             secs_last = lambda x: x.sec_past_st - x.sec_past_st_lag
         )
         .assign(
-            heading = lambda x: np.where(
-                x.secs_next.eq(2) & x.secs_last.eq(1),
-                np.nan,
-                x.heading
-            )    
+            **assign_statement1
         )
     )
+    
+    assign_statement2 = {col_name : lambda x: np.where(x.collapsed_rows.eq(1),
+                                                       x[col_name],
+                                                       np.nan
+                                                       ),
+                        'interp_fail' : lambda x: np.nan
+    }
     
      # where we collapsed, let's NA these out for interpolate
      # if the repeated values are the same, we should probably not NA these out
     rawnav = (
         rawnav
         .assign(
-            heading = lambda x: np.where(
-                x.collapsed_rows.eq(1),
-                x.heading,
-                np.nan
-            ),
-            heading_interp_fail = lambda x: np.nan
+            **assign_statement2
         )
     )
         
@@ -312,7 +318,7 @@ def interp_heading_over_sec(rawnav, interp_method = "index"):
         rawnav
         .groupby(['filename','index_run_start'])
         # TODO: we should also probably interpolate heading
-        .apply(lambda x: interp_heading(x, interp_method = interp_method))
+        .apply(lambda x: interp_column(x, col_name, interp_method = interp_method))
         .reset_index(drop = True)
     ) 
         
@@ -327,7 +333,7 @@ def interp_heading_over_sec(rawnav, interp_method = "index"):
             'sec_past_st_lag',
             'secs_next',
             'secs_last',
-            'heading_interp_fail'
+            'interp_fail'
             ],
             axis = "columns"
         )
@@ -335,33 +341,39 @@ def interp_heading_over_sec(rawnav, interp_method = "index"):
     
     return(rawnav)
 
-def calc_angular_speed(rawnav):
+def calc_rawnav_speed(rawnav, col_name):
     
     #### lag values
-    rawnav[['heading_next','sec_past_st_next']] = (
+    rawnav[[col_name+'_next','sec_past_st_next']] = (
         rawnav
-        .groupby(['filename','index_run_start'], sort = False)[['heading','sec_past_st']]
+        .groupby(['filename','index_run_start'], sort = False)[[col_name,'sec_past_st']]
         .transform(lambda x: x.shift(-1))
     )
+    
+    
+    assign_statement1 = {'secs_marg' : lambda x: x.sec_past_st_next - x.sec_past_st,
+                        col_name+'_marg' : lambda x: x[col_name+'_next'] - x[col_name],
+                        col_name+'_speed_next' : lambda x: ((x[col_name+'_next'] - x[col_name]) / 
+                                (x.sec_past_st_next - x.sec_past_st))
+                        }
+    
+    assign_statement2 = {col_name+'_speed_next' : lambda x: x[col_name+'_speed_next'].replace([np.nan],0)}
     
     #### calculate degrees per second
     rawnav = (
         rawnav
         .assign(
-            secs_marg = lambda x: x.sec_past_st_next - x.sec_past_st,
-            heading_marg = lambda x: x.heading_next - x.heading,
-            deg_sec_next = lambda x: ((x.heading_next - x.heading) / 
-                                (x.sec_past_st_next - x.sec_past_st))
+            **assign_statement1
         )
         # if you get nan's, it's usually zero travel distance and zero time around 
         # doors. the exception is at the end of the trip.
         .assign(
-            deg_sec_next = lambda x: x.deg_sec_next.replace([np.nan],0)
+            **assign_statement2
         )
     )
         
     # if you're the last row , we reset you back to np.nan
-    rawnav.loc[rawnav.groupby(['filename','index_run_start']).tail(1).index, 'deg_sec_next'] = np.nan
+    rawnav.loc[rawnav.groupby(['filename','index_run_start']).tail(1).index, col_name+'_speed_next'] = np.nan
 
     return(rawnav)
     
@@ -520,11 +532,11 @@ def expand_rawnav_column(rawnav_ti, expand_col):
 # recalculates accel and jerk
 def apply_smooth_rawnav(rawnav_ti, smooth_col, window_size):
     
-    smooth_col_sm = smooth_col + "_sm"
-    
     rawnav_ex = expand_rawnav_column(rawnav_ti, smooth_col)
-    rawnav_ex[smooth_col_sm] = savitzky_golay(rawnav_ex[smooth_col].to_numpy(), window_size, 3)    
+    rawnav_ex[smooth_col+"_sm"] = savitzky_golay(rawnav_ex[smooth_col].to_numpy(), window_size, 3)    
     
+    # Heading and angular speed values need to be able to be negative. May need
+    # to add this back in as a conditional statement
 #    rawnav_ex = (
 #        rawnav_ex
 #        .assign(
@@ -536,6 +548,7 @@ def apply_smooth_rawnav(rawnav_ti, smooth_col, window_size):
 #        )    
 #    )
     
+    # Not bothering with accel right now
 #    rawnav_ex = (
 #        rawnav_ex
 #        # a little hack to shortcut the need to group, since we're doing all this by trip 
@@ -553,7 +566,7 @@ def apply_smooth_rawnav(rawnav_ti, smooth_col, window_size):
         rawnav_ti
         # drop the placeholder columns
         .drop(
-            [smooth_col_sm
+            [smooth_col+"_sm"
 #             'deg_accel_next'
              ],
             axis = 'columns'
@@ -576,9 +589,7 @@ def smooth_rawnav_column(rawnav, smooth_col, window_size):
     # this requires interpolated data, according to internet
     # https://gis.stackexchange.com/questions/173721/reconstructing-modis-time-series-applying-savitzky-golay-filter-with-python-nump
     
-    smooth_col_sm = smooth_col + "_sm"
-    
-    assign_statement = {smooth_col_sm : np.nan}
+    assign_statement = {smooth_col+"_sm" : np.nan}
 #                        deg_accel_next : np.nan}
     
     rawnav = (
