@@ -242,8 +242,73 @@ most_post_stop_delay3 %>%
   ) %>%
   pull(post)
 ```
+## Distribution of delay at a stop
+
+23697 is Fessenden St NW, not far from Friendship heights
+
+```{r}
+fessen_delay <-
+  rawnav_decomp_all %>%
+  filter(
+    stop_id_group == 23697
+  ) %>%
+  filter(
+    # conditional on serving stop and passengers
+    # we could change this up later 
+    stop_case == 'atstop' & door_case == "doors"
+  ) %>%
+  filter(
+    relative_to_firstdoor == "post"
+  ) %>%
+  group_by(
+    filename,
+    index_run_start,
+    relative_to_firstdoor
+  ) %>%
+  summarize(
+    tot_secs = sum(secs_marg, na.rm = TRUE),
+    start_date_time = first(start_date_time),
+    .groups = "drop"
+  )
+
+ggplot(fessen_delay) +
+  geom_histogram(
+    aes(tot_secs)
+  )
+```
+
 
 
 # Correlation with Travel Time
 Which stop
+
+
+# SMoothing check
+How do we make sure that our smoothing isn't too sharp?
+
+Do we still bouts of really sharp acceleration?
+
+```{r}
+top_accel9 <-
+  rawnav_decomp_all %>%
+  slice_max(
+    order_by = accel9,
+    n = 100
+  ) 
+```
+
+
+```{r}
+rawnav_rawer <-
+  rawnav_decomp_all %>%
+  group_by(
+    filename,
+    index_run_start
+  ) %>%
+  mutate(
+    accel_raw 
+    
+  )
+```
+
 
