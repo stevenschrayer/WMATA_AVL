@@ -232,13 +232,12 @@ rawnav_heading2 = agg_sec(rawnav_heading)
 # aren't just the ones where we aggregated seconds. In general, we'll probably want to 
 # revisit the aggregation/interpolation process, so I'm going to try not to touch this too much
 # more for now.
-rawnav_heading3 = interp_column_over_sec(rawnav_heading2[rawnav_heading2.index_run_start == 9306], 'heading')
+rawnav_heading3 = interp_column_over_sec(rawnav_heading2[rawnav_heading2.index_run_start == 14528], 'heading')
 
 # %% Plot sample data
     
 heading_sample = (
-#    rawnav_reset_heading[rawnav_reset_heading.index_run_start == 9306]
-    rawnav_heading3 #[rawnav_heading3.index_run_start == 14528]
+    rawnav_heading3
     .query('filename == "rawnav07225210305.txt"')
     .assign(stop_zone = lambda x: 
                 np.where(
@@ -264,16 +263,14 @@ fig.show()
 
 # %% Smooth heading values
 
-rawnav_heading_sm = smooth_rawnav_column(rawnav_heading3[rawnav_heading3.index_run_start == 9306],
+rawnav_heading_sm = smooth_rawnav_column(rawnav_heading3,
                                          smooth_col = 'heading',
                                          window_size = 11)
 
 # %% Plot sample data
     
 heading_sample_sm = (
-#    rawnav_reset_heading[rawnav_reset_heading.index_run_start == 9306]
-    rawnav_heading_sm[rawnav_heading_sm.index_run_start == 9306]
-    .query('filename == "rawnav07225210305.txt"')
+    rawnav_heading_sm
     .assign(stop_zone = lambda x: 
                 np.where(
                     x.stop_window_area.isna(),
@@ -298,15 +295,14 @@ fig.show()
 # %% Calculate angular speed
 
 # these are not the rolling vals, though i think we will want to include those before long.
-rawnav_heading4 = calc_rawnav_speed(rawnav_heading_sm[rawnav_heading_sm.index_run_start == 9306], 'heading_sm')
+rawnav_heading4 = calc_rawnav_speed(rawnav_heading_sm, 'heading_sm')
 
 
 
 # %% Plot sample data
 
 speed_sample = (
-    rawnav_heading4[rawnav_heading4.index_run_start == 9306]
-    .query('filename == "rawnav07225210305.txt"')
+    rawnav_heading4
     .assign(stop_zone = lambda x: 
                 np.where(
                     x.stop_window_area.isna(),
@@ -338,8 +334,7 @@ rawnav_speed_smooth = smooth_rawnav_column(rawnav_heading4,
 # %% Visualize sample again
 
 speed_sample_smooth = (
-    rawnav_speed_smooth[rawnav_speed_smooth.index_run_start == 9306]
-    .query('filename == "rawnav07225210305.txt"')
+    rawnav_speed_smooth
     .assign(stop_zone = lambda x: 
                 np.where(
                     x.stop_window_area.isna(),
@@ -370,7 +365,7 @@ rawnav_accel = calc_rawnav_accel(rawnav_speed_smooth, 'heading_sm_speed_next_sm'
 # %% Visualize acceleration
 
 accel_sample = (
-    rawnav_accel[rawnav_accel.index_run_start == 14528]
+    rawnav_accel
     .assign(stop_zone = lambda x: 
                 np.where(
                     x.stop_window_area.isna(),
@@ -397,20 +392,46 @@ fig.show()
 
 # %% Determine categories
     
+# Lag smoothed speed
+rawnav_speed_smooth[['heading_sm_speed_next_sm_lag']] = (
+    rawnav_speed_smooth
+    .groupby(['filename','index_run_start'], sort = False)[['heading_sm_speed_next_sm']]
+    .transform(lambda x: x.shift(1))
+)
+
+
+# Identify where speed crosses zero
+heading_class = (
+    rawnav_speed_smooth
+#    .query('filename == "rawnav07225210305.txt"')
+    .assign(
+        heading_chg_dir = lambda x:
+            (x.heading_sm_speed_next_sm.le(0) & x.heading_sm_speed_next_sm_lag.ge(0)) |
+            (x.heading_sm_speed_next_sm.ge(0) & x.heading_sm_speed_next_sm_lag.le(0))
+    )
+)
+        
+# Create column to ID groups in between the points where speed crosses zero
+heading_class['heading_chg_dir'] = (
+    	heading_class
+    	.groupby(['filename','index_run_start'], sort = False)[['heading_chg_dir']]
+    	.transform(lambda x: x.cumsum())
+    )
+
+
 # Classify speeds into positive, negative, and near-zero
 # Positive is turning to the right
 # Negative is turning to the left
 heading_class = (
-    rawnav_speed_smooth
-    .query('filename == "rawnav07225210305.txt"')
+    heading_class
     .assign(
         heading_decomp = lambda x: 
             np.select(
-                [x.heading_sm_speed_next_sm >= 0.5,
-                 x.heading_sm_speed_next_sm <= -0.5],
+                [x.heading_sm_speed_next_sm >= 0.8,
+                 x.heading_sm_speed_next_sm <= -0.8],
                 ["right_turn",
                  "left_turn"],
-                 default = "straight"
+                 default = pd.NA
             ),
         stop_zone = lambda x: 
                 np.where(
@@ -425,29 +446,33 @@ heading_class = (
                     "stop"
                 )
     )
-    .assign(
-        heading_decomp2 = lambda x:
-            x.heading_decomp + x.stop_zone_stop
-    )
 )
+
+# Fill out NAs with right/left/straight values
+heading_class['heading_decomp'] = (
+        heading_class
+        .groupby(['filename','index_run_start','heading_chg_dir'])[['heading_decomp']]
+        .transform(lambda x: x.ffill().bfill())
+        .fillna(value = "straight")
+    )
 
 
 # Color speed diagram
 fig = px.scatter(x = heading_class.sec_past_st, 
                  y = heading_class.heading_sm_speed_next_sm,
-                 color = heading_class.heading_decomp2)
+                 color = heading_class.heading_decomp)
 fig.show()
 
 # Color heading diagram
 fig = px.scatter(x = heading_class.sec_past_st, 
                  y = heading_class.heading_sm,
-                 color = heading_class.heading_decomp2)
+                 color = heading_class.heading_decomp)
 fig.show()
 
 # Color lat/long map
 fig = px.scatter(x = heading_class.long, 
                  y = heading_class.lat,
-                 color = heading_class.heading_decomp2)
+                 color = heading_class.heading_decomp)
 fig.show()
     
 # Pull into stop
