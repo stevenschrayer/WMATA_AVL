@@ -232,14 +232,14 @@ rawnav_heading2 = agg_sec(rawnav_heading)
 # aren't just the ones where we aggregated seconds. In general, we'll probably want to 
 # revisit the aggregation/interpolation process, so I'm going to try not to touch this too much
 # more for now.
-rawnav_heading3 = interp_column_over_sec(rawnav_heading2[rawnav_heading2.index_run_start == 14528], 'heading')
+rawnav_heading3 = interp_column_over_sec(rawnav_heading2[rawnav_heading2.index_run_start == 9306], 'heading')
 
 # %% Plot sample data
     
 heading_sample = (
 #    rawnav_reset_heading[rawnav_reset_heading.index_run_start == 9306]
-    rawnav_heading3[rawnav_heading3.index_run_start == 14528]
-#    .query('filename == "rawnav07225210305.txt"')
+    rawnav_heading3 #[rawnav_heading3.index_run_start == 14528]
+    .query('filename == "rawnav07225210305.txt"')
     .assign(stop_zone = lambda x: 
                 np.where(
                     x.stop_window_area.isna(),
@@ -262,9 +262,9 @@ fig.show()
 
 
 
-# %% Smooth heading values?
+# %% Smooth heading values
 
-rawnav_heading_sm = smooth_rawnav_column(rawnav_heading3[rawnav_heading3.index_run_start == 14528],
+rawnav_heading_sm = smooth_rawnav_column(rawnav_heading3[rawnav_heading3.index_run_start == 9306],
                                          smooth_col = 'heading',
                                          window_size = 11)
 
@@ -272,8 +272,8 @@ rawnav_heading_sm = smooth_rawnav_column(rawnav_heading3[rawnav_heading3.index_r
     
 heading_sample_sm = (
 #    rawnav_reset_heading[rawnav_reset_heading.index_run_start == 9306]
-    rawnav_heading_sm[rawnav_heading_sm.index_run_start == 14528]
-#    .query('filename == "rawnav07225210305.txt"')
+    rawnav_heading_sm[rawnav_heading_sm.index_run_start == 9306]
+    .query('filename == "rawnav07225210305.txt"')
     .assign(stop_zone = lambda x: 
                 np.where(
                     x.stop_window_area.isna(),
@@ -298,14 +298,15 @@ fig.show()
 # %% Calculate angular speed
 
 # these are not the rolling vals, though i think we will want to include those before long.
-rawnav_heading4 = calc_rawnav_speed(rawnav_heading_sm[rawnav_heading_sm.index_run_start == 14528], 'heading_sm')
+rawnav_heading4 = calc_rawnav_speed(rawnav_heading_sm[rawnav_heading_sm.index_run_start == 9306], 'heading_sm')
 
 
 
 # %% Plot sample data
 
 speed_sample = (
-    rawnav_heading4[rawnav_heading4.index_run_start == 14528]
+    rawnav_heading4[rawnav_heading4.index_run_start == 9306]
+    .query('filename == "rawnav07225210305.txt"')
     .assign(stop_zone = lambda x: 
                 np.where(
                     x.stop_window_area.isna(),
@@ -329,15 +330,16 @@ fig.show()
 
 # %% Smooth speed
 
-rawnav_heading_smooth = smooth_rawnav_column(rawnav_heading4,
-                                             smooth_col = 'heading_sm_speed_next',
-                                             window_size = 11)
+rawnav_speed_smooth = smooth_rawnav_column(rawnav_heading4,
+                                           smooth_col = 'heading_sm_speed_next',
+                                           window_size = 11)
 
 
 # %% Visualize sample again
 
 speed_sample_smooth = (
-    rawnav_heading_smooth[rawnav_heading_smooth.index_run_start == 14528]
+    rawnav_speed_smooth[rawnav_speed_smooth.index_run_start == 9306]
+    .query('filename == "rawnav07225210305.txt"')
     .assign(stop_zone = lambda x: 
                 np.where(
                     x.stop_window_area.isna(),
@@ -359,15 +361,114 @@ fig = px.scatter(x = speed_sample_smooth.odom_ft,
 fig.show()
 
 
+# %% Calculate acceleration
+
+rawnav_accel = calc_rawnav_accel(rawnav_speed_smooth, 'heading_sm_speed_next_sm')
+
+
+
+# %% Visualize acceleration
+
+accel_sample = (
+    rawnav_accel[rawnav_accel.index_run_start == 14528]
+    .assign(stop_zone = lambda x: 
+                np.where(
+                    x.stop_window_area.isna(),
+                    "no",
+                    "stop_area"
+                ),
+            stop_zone_stop = lambda x:
+                np.where(
+                    x.stop_id.isna(),
+                    x.stop_zone,
+                    "stop"
+                )
+    )
+)
+
+fig = px.scatter(x = accel_sample.odom_ft, 
+                 y = accel_sample.deg_accel_next,
+                 color = accel_sample.stop_zone_stop)
+fig.show()
+
+
+# Conclusion: Acceleration is not helpful.
+
 
 # %% Determine categories
     
+# Classify speeds into positive, negative, and near-zero
+# Positive is turning to the right
+# Negative is turning to the left
+heading_class = (
+    rawnav_speed_smooth
+    .query('filename == "rawnav07225210305.txt"')
+    .assign(
+        heading_decomp = lambda x: 
+            np.select(
+                [x.heading_sm_speed_next_sm >= 0.5,
+                 x.heading_sm_speed_next_sm <= -0.5],
+                ["right_turn",
+                 "left_turn"],
+                 default = "straight"
+            ),
+        stop_zone = lambda x: 
+                np.where(
+                    x.stop_window_area.isna(),
+                    "no",
+                    "stop_area"
+                ),
+            stop_zone_stop = lambda x:
+                np.where(
+                    x.stop_id.isna(),
+                    x.stop_zone,
+                    "stop"
+                )
+    )
+    .assign(
+        heading_decomp2 = lambda x:
+            x.heading_decomp + x.stop_zone_stop
+    )
+)
+
+
+# Color speed diagram
+fig = px.scatter(x = heading_class.sec_past_st, 
+                 y = heading_class.heading_sm_speed_next_sm,
+                 color = heading_class.heading_decomp2)
+fig.show()
+
+# Color heading diagram
+fig = px.scatter(x = heading_class.sec_past_st, 
+                 y = heading_class.heading_sm,
+                 color = heading_class.heading_decomp2)
+fig.show()
+
+# Color lat/long map
+fig = px.scatter(x = heading_class.long, 
+                 y = heading_class.lat,
+                 color = heading_class.heading_decomp2)
+fig.show()
     
 # Pull into stop
+# - should always be positive speed, since the bus is turning right
+# - maybe followed by negative speed to straighten out
+
 # Pull out of stop
+# - should always be negative speed, usually followed by positive speed to straighten out
+
 # Change lanes
+# - positive speed followed by negative speed, or vice versa
+
 # Turn at intersection
+# - Positive speed is always right, negative speed is always left
+
+
 # Drive straight
+# - select a threshold that is considered near-zero speed
+# - however, curves in the road should be considered driving "straight"
+
+
 # At stop (door open?)
 
 
