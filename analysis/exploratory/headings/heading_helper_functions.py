@@ -377,7 +377,7 @@ def calc_rawnav_speed(rawnav, col_name):
 
     return(rawnav)
     
-def calc_angular_accel(rawnav, groupvars = ['filename','index_run_start'], speed_col = 'deg_sec_next'):
+def calc_rawnav_accel(rawnav, speed_col, groupvars = ['filename','index_run_start']):
     # a little inefficient to recalculate this, but we're tryign to call this within the exapnded
     # data as well.
     rawnav['sec_past_st_next'] = (
@@ -395,6 +395,10 @@ def calc_angular_accel(rawnav, groupvars = ['filename','index_run_start'], speed
         .transform(lambda x: x.shift(1))
     )
 
+    assign_statement1 = {speed_col+'_accel' : lambda x: (x[speed_col]- x[speed_lag_col]) / (x.sec_past_st_next - x.sec_past_st)}
+    assign_statement2 = {}
+
+
     # Note, not replicating the 3rd ping lag, as it's a little dicey i htink
     rawnav = (
         rawnav 
@@ -405,7 +409,7 @@ def calc_angular_accel(rawnav, groupvars = ['filename','index_run_start'], speed
             # accel_next is also a bit of a misnomer; more like accel_at_point, 
             # because some downstream/notebook code depends on accel_next, sticking to that
             # nomenclature for now
-            deg_accel_next = lambda x: (x[speed_col]- x[speed_lag_col]) / (x.sec_past_st_next - x.sec_past_st),
+            deg_accel_next = lambda x: (x[speed_col]- x[speed_lag_col]) / (x.sec_past_st_next - x.sec_past_st)
         )
         # as before, we'll set these cases to nan and then fill
          .assign(
