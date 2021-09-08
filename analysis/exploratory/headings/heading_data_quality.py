@@ -31,7 +31,7 @@ config = dotenv_values(os.path.join(path_working, '.env'))
 
 # Globals
 q_jump_route_list = ['30N','30S','33','31']
-analysis_routes = q_jump_route_list
+analysis_routes = ['31']
 analysis_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 wmata_crs = 2248
 
@@ -155,6 +155,17 @@ del rawnav_rt
 del rawnav_fil_rt
 
 
+# %% Count NAs in heading column
+
+heading_na = pd.to_numeric(rawnav_fil['heading']).isna().sum()
+
+# No missing values at all!!
+
+heading_min = rawnav_fil.heading.min()
+heading_max = rawnav_fil.heading.max()
+
+# Values are all between 0 and 360
+
 # %% Identify the stop window
 
 rawnav_window = (
@@ -225,11 +236,15 @@ del rawnav_window
 # Replace the heading column with the new heading values
 rawnav_heading = rawnav_reset_heading.assign(heading = rawnav_reset_heading[['heading_new']])
 
+del rawnav_reset_heading
+
 # aggregate so we only have one observation for each second - this uses the 'last' heading observation
 rawnav_heading2 = agg_sec(rawnav_heading)
 
 # quick check of how many pings we will have repeated seconds values
 (rawnav_heading2.shape[0] - rawnav_heading.shape[0]) / rawnav_heading.shape[0]
+
+del rawnav_heading
 
 # This is a separate step again; there are some places where we'll want to interpolate that
 # aren't just the ones where we aggregated seconds. In general, we'll probably want to 
@@ -237,24 +252,61 @@ rawnav_heading2 = agg_sec(rawnav_heading)
 # more for now.
 rawnav_heading3 = interp_column_over_sec(rawnav_heading2, 'heading')
 
-del rawnav_reset_heading
-del rawnav_heading
 del rawnav_heading2
 
 # %% Smooth heading values
 
-rawnav_heading_sm = smooth_rawnav_column(rawnav_heading3,
+# Drop broken trips
+rawnav_heading3['trip_rows'] = (
+    rawnav_heading3
+    .groupby(['filename','index_run_start'], sort = False)[['odom_ft']]
+    .transform(len)
+)
+
+rawnav_heading4 = rawnav_heading3[rawnav_heading3.trip_rows > 10]
+
+#rawnav_heading3_1 = rawnav_heading3[~rawnav_heading3.index_run_start.isin([3607,14212,25546,8820,3406,8117,3246])]
+
+#trip_list = rawnav_heading4.index_run_start.unique()
+#
+#for idx in trip_list:
+#    print(idx)
+rawnav_heading_sm = smooth_rawnav_column(rawnav_heading4,
                                          smooth_col = 'heading',
                                          window_size = 11)
 
+del rawnav_heading3
 
 # %% Calculate angular speed
 
 # these are not the rolling vals, though i think we will want to include those before long.
-rawnav_heading4 = calc_rawnav_speed(rawnav_heading_sm, 'heading_sm')
+rawnav_heading5 = calc_rawnav_speed(rawnav_heading_sm, 'heading_sm')
 
-
+del rawnav_heading_sm
 
 # %% Check how many trips have speeds of more than 45 deg/sec
+
+# Number of pings with unrealistic speeds
+speed_check_pings = rawnav_heading5[rawnav_heading5.heading_sm_speed_next.ge(45)]
+
+speed_check_pings.shape[0] / rawnav_heading5.shape[0]
+
+# Number of trips with unrealistic speeds
+speed_check_trips = speed_check_pings[['index_run_start','filename']].drop_duplicates()
+
+speed_check_trips.shape[0] / rawnav_heading5[['index_run_start','filename']].drop_duplicates().shape[0]
+
+
+
+# %% Save values for each route
+
+pings_total_31 = rawnav_heading5.shape[0]
+pings_bad_31 = speed_check_pings.shape[0]
+
+trips_total_31 = rawnav_heading5[['index_run_start','filename']].drop_duplicates().shape[0]
+trips_bad_31 = speed_check_trips.shape[0]
+
+(pings_bad_30N + pings_bad_30S + pings_bad_33 + pings_bad_31) / (pings_total_30N + pings_total_30S + pings_total_33 + pings_total_31)
+(trips_bad_30N + trips_bad_30S + trips_bad_33 + trips_bad_31) / (trips_total_30N + trips_total_30S + trips_total_33 + trips_total_31)
 
 
