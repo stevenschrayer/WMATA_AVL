@@ -229,6 +229,23 @@ plot_rawnav <-
         ) +
         guides(color=guide_legend(title=thetitle))
       
+    } else if (rlang::as_label(enquo(var)) == "basic_decomp_ext"){
+      g <-
+        g +
+        scale_color_manual(
+          values = c(
+            # based on brewer qualitative set 3
+            "steady" = "#80b1d3",
+            "decel_doors" = "#ffffb3",
+            "decel_nodoors" = "#bebada",
+            "stopped_doors" = "#fb8072",
+            "stopped_nodoors" = "#fdb462",
+            "accel_doors" = "#8dd3c7",
+            "accel_nodoors" = "#bebada",
+            "other_delay" = "#bebada"
+          )
+        ) +
+        guides(color=guide_legend(title=thetitle))
     } else if (any("factor" %in% varclass)) {
       g <- 
         g + 
