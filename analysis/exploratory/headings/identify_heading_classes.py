@@ -256,7 +256,10 @@ heading_sample = (
 
 fig = px.scatter(x = heading_sample.odom_ft, 
                  y = heading_sample.heading,
-                 color = heading_sample.stop_zone_stop)
+                 color = heading_sample.stop_zone_stop,
+                 labels = {"x": "Odometer (feet)",
+                           "y": "Heading (degrees)"},
+                 title = "Route 31 NB")
 fig.show()
 
 
@@ -352,7 +355,9 @@ speed_sample_smooth = (
 
 fig = px.scatter(x = speed_sample_smooth.odom_ft, 
                  y = speed_sample_smooth.heading_sm_speed_next_sm,
-                 color = speed_sample_smooth.stop_zone_stop)
+                 labels = {"x": "Odometer (feet)",
+                           "y": "Speed (deg/sec)"},
+                 title = "Route 31 NB")
 fig.show()
 
 
@@ -464,15 +469,23 @@ fig = px.scatter(x = heading_class.sec_past_st,
 fig.show()
 
 # Color heading diagram
-fig = px.scatter(x = heading_class.sec_past_st, 
+fig = px.scatter(x = heading_class.odom_ft, 
                  y = heading_class.heading_sm,
-                 color = heading_class.heading_decomp)
+                 color = heading_class.heading_decomp,
+                 labels = {"x": "Odometer (feet)",
+                           "y": "Heading (degrees)",
+                           "color": "Turn Type"},
+                 title = "Route 31 NB")
 fig.show()
 
 # Color lat/long map
 fig = px.scatter(x = heading_class.long, 
                  y = heading_class.lat,
-                 color = heading_class.heading_decomp)
+                 color = heading_class.heading_decomp,
+                 labels = {"x": "Longitude",
+                           "y": "Latitude",
+                           "color": "Turn Type"},
+                 title = "Route 31 NB")
 fig.show()
     
 # Pull into stop
