@@ -18,18 +18,32 @@ pio.renderers.default='browser'
 # %% Set paths
 
 # Paths
-os.environ["GDAL_DATA"] = os.environ["CONDA_PREFIX"] + "\Library\share\gdal"
-path_working = r"C:\OD\OneDrive - Foursquare ITP\Documents\0002 R\WMATA Datamart\WMATA_AVL"
-os.chdir(os.path.join(path_working))
-sys.path.append(r"C:\OD\OneDrive - Foursquare ITP\Documents\0002 R\WMATA Datamart\WMATA_AVL")
-path_sp = r"C:\OD\Foursquare ITP\Projects - WMATA Datamart\Task 3 - Bus Priority"
-path_source_data = os.path.join(path_sp,"data","00-Raw")
-path_processed_data = os.path.join(path_sp, "data","02-Processed")
+if os.getlogin() == "WylieTimmerman":
+    # Working Paths
+    path_working = r"C:\Users\WylieTimmerman\Documents\projects_local\WMATA_AVL_datamart"
+    os.chdir(os.path.join(path_working))
+    sys.path.append(r"C:\Users\WylieTimmerman\Documents\projects_local\WMATA_AVL_datamart")
+    path_sp = r"C:\OD\Foursquare ITP\Projects - WMATA Datamart\Task 3 - Bus Priority"
+    path_source_data = os.path.join(path_sp,"Data","00-Raw")
+    path_processed_data = os.path.join(path_sp, "Data", "02-Processed") 
+elif os.getlogin() == "JackMcDowell":
+    os.environ["GDAL_DATA"] = os.environ["CONDA_PREFIX"] + "\Library\share\gdal"
+    path_working = r"C:\OD\OneDrive - Foursquare ITP\Documents\0002 R\WMATA Datamart\WMATA_AVL"
+    os.chdir(os.path.join(path_working))
+    sys.path.append(r"C:\OD\OneDrive - Foursquare ITP\Documents\0002 R\WMATA Datamart\WMATA_AVL")
+    path_sp = r"C:\OD\Foursquare ITP\Projects - WMATA Datamart\Task 3 - Bus Priority"
+    path_source_data = os.path.join(path_sp,"data","00-Raw")
+    path_processed_data = os.path.join(path_sp, "data","02-Processed")
+else:
+    raise FileNotFoundError("Define the path_working, path_source_data, gtfs_dir, \
+                            ZippedFilesloc, and path_processed_data in a new elif block")
+
+
 # Server credentials
 config = dotenv_values(os.path.join(path_working, '.env'))
 
 # Globals
-q_jump_route_list = ['30N','30S','33','31']
+# q_jump_route_list = ['30N','30S','33','31']
 analysis_routes = ['30N']
 analysis_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 wmata_crs = 2248
@@ -44,9 +58,9 @@ rawnav_raw = pd.DataFrame()
 
 for yr in [
     '202102',
-    '202103',
-    '202104',
-    '202105'
+    # '202103',
+    # '202104',
+    # '202105'
 ]:
     rawnav_raw_temp = (
         wr.read_cleaned_rawnav(
@@ -232,7 +246,9 @@ rawnav_heading2 = agg_sec(rawnav_heading)
 # aren't just the ones where we aggregated seconds. In general, we'll probably want to 
 # revisit the aggregation/interpolation process, so I'm going to try not to touch this too much
 # more for now.
+# this works:
 rawnav_heading3 = interp_column_over_sec(rawnav_heading2[rawnav_heading2.index_run_start == 14528], 'heading')
+rawnav_heading3 = interp_column_over_sec(rawnav_heading2, 'heading')
 
 # %% Plot sample data
     
