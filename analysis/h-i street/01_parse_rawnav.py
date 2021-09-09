@@ -28,9 +28,9 @@ else:
                             ZippedFilesloc, and path_processed_data in a new elif block")
 
 import wmatarawnav as wr
-# analysis_routes = ['30N','30S','32','33','36']
+analysis_routes = ['30N','30S','32','33','36']
 # later = ['37','39','42','43','G8']
-analysis_routes = ['G8']
+# analysis_routes = ['G8']
 
 #### Load Raw RawNav data
 # reload inventory
@@ -50,10 +50,11 @@ rawnav_inventory_filtered = (
     .filter(lambda x: (x.route.isin(analysis_routes).any() & x.year.ne(2021).any()))
 )
 
-rawnav_inventory_filtered = (
-    rawnav_inventory_filtered
-    .loc[rawnav_inventory_filtered.file_id.isin(['02143171014','02172171020','02212171018'])]    
-)
+# for debug on G8
+# rawnav_inventory_filtered = (
+#     rawnav_inventory_filtered
+#     .loc[rawnav_inventory_filtered.file_id.isin(['02143171014','02172171020','02212171018'])]    
+# )
 
 if len(rawnav_inventory_filtered) == 0:
     raise Exception("No Analysis Routes found in file_universe")
@@ -79,10 +80,6 @@ for index, row in rawnav_inv_filt_first.iterrows():
 
     if type(temp) != type(None):
         route_rawnav_tag_dict[row['filename']] = dict(RawData=temp, tagLineInfo=tag_info_line_no)
-    else:
-        remove_file = row['filename']  
-        rawnav_inventory_filtered_valid  = rawnav_inventory_filtered_valid.query('filename!= @remove_file')
-
 
 #### Clean RawNav data
 rawnav_data_dict = {}
@@ -95,10 +92,13 @@ for key, datadict in route_rawnav_tag_dict.items():
         analysis_routes = analysis_routes
     )
 
-    rawnav_data_dict[key] = temp_dat['rawnavdata']
+    rawnav_data_dict[key] = temp_dat
 
-out_rawnav_dat = pd.concat(rawnav_data_dict)
+out_rawnav_dat = pd.concat(rawnav_data_dict).reset_index(drop = True)
 
+breakpoint()
+del rawnav_data_dict
+del route_rawnav_tag_dict
 #### Output
 # Path Setup
 path_rawnav_data = os.path.join(path_processed_data, "rawnav_data_mult.parquet")
@@ -112,7 +112,7 @@ if not os.path.isdir(path_rawnav_data):
  pq.write_to_dataset(
      pa.Table.from_pandas(
          out_rawnav_dat,
-         schema = wr.rawnav_data_schema()
+         schema = wr.rawnav_data_simple_schema()
      ), 
      root_path=os.path.join(path_rawnav_data),
      partition_cols=['route'])

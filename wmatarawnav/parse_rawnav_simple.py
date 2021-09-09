@@ -9,7 +9,8 @@ import pandas as pd
 import numpy as np
 from . import parse_rawnav as pr
 import re
-import pandasql as ps
+from . import low_level_fns as ll
+import pyarrow as pa
 
 def clean_rawnav_data_alt(data_dict, filename, analysis_routes = None):
     '''
@@ -82,14 +83,16 @@ def clean_rawnav_data_alt(data_dict, filename, analysis_routes = None):
     
     rawnavdata = add_run_dividers_simple(rawnavdata, tagline_data)
     
-    rawnavdata.loc[:, "filename"] = filename
+    # Final clean up matters
+    # This was done differently in the older version, just trying to get it to run now.
+    rawnavdata['pattern'] = rawnavdata['pattern'].str.strip().astype('float').astype('Int64')
     
     # Filter to analysis_routes
     rawnavdata = (
         rawnavdata
-        .loc[rawnavdata.route.str.isin(analysis_routes)]
-    )        
-        
+        .loc[rawnavdata.route.isin(analysis_routes)]
+    )
+
     return rawnavdata
 
 def add_run_dividers_simple(data, tagline_data):
@@ -121,8 +124,21 @@ def add_run_dividers_simple(data, tagline_data):
                 "_" +
                 x.index_run_end_original.astype(str)
         )
+        .rename(columns ={
+                    "tag_datetime" : "start_date_time",
+                }
+        )
+        .assign(
+            end_date_time = lambda x: 
+                pd.to_datetime(
+                    x.tag_date.astype(str) + 
+                    " " + 
+                    x.run_end_time,
+                    errors='coerce'
+                )
+        )
     )
-    # TOOD: not working
+        
     data_joined = (
         pd.merge_asof(
             data, 
@@ -131,7 +147,7 @@ def add_run_dividers_simple(data, tagline_data):
             .sort_values(['index_run_start_original']), 
             left_on="index_loc", 
             right_on="index_run_start_original", 
-            direction='forward'
+            direction='backward'
         )
         .rename(columns = {'tag_key':'tag_key_start'})
         .drop(columns = ['index_run_start_original'])
@@ -145,13 +161,117 @@ def add_run_dividers_simple(data, tagline_data):
             .sort_values(['index_run_end_original']), 
             left_on="index_loc", 
             right_on="index_run_end_original", 
-            direction='backward'
+            direction='forward'
         )
         .rename(columns = {'tag_key':'tag_key_end'})
         .drop(columns = ['index_run_end_original'])
     )
     
-    breakpoint()
+    data_joined = (
+        data_joined
+        .loc[data_joined.tag_key_start == data_joined.tag_key_end]
+    )
     
+    data_joined = (
+        data_joined
+        .merge(
+            tagline_data
+            .filter([
+                'tag_key',
+                'filename',
+                'wday',
+                'route',
+                'pattern',
+                'route_pattern',
+                'start_date_time',
+                'end_date_time'
+                ], 
+                axis = "columns"
+            ),
+            left_on = 'tag_key_start',
+            right_on = "tag_key",
+            how = "left"
+        )
+    )
+    
+    data_joined['index_run_start'] = (
+        data_joined
+        .groupby(['tag_key_start'])['index_loc']
+        .transform(
+            lambda x: x.min()
+        )      
+    )
+    
+    data_joined = (
+        data_joined
+        .drop(columns = ['tag_key_start','tag_key_end','tag_key','run_end_time'], errors = 'ignore')
+    )
 
-    return data
+    data_joined  = (
+        data_joined 
+        .pipe(
+            ll.reorder_first_cols,
+            [
+                'filename',
+                'index_run_start',
+                'route',
+                'pattern',
+                'route_pattern',
+                'start_date_time',
+                'end_date_time',
+                'wday',
+                'index_loc',
+                'sec_past_st',
+                'odom_ft',
+                'door_state',
+                'row_before_apc',
+                'stop_window',
+                'veh_state',
+                'heading',
+                'lat',
+                'long',
+                'lat_raw',
+                'long_raw',
+                'sat_cnt'
+            ]
+        )
+    )
+
+    return data_joined
+
+
+def rawnav_data_simple_schema():
+    """
+    Returns
+    -------
+    rawnav_data_schema: pa.schema,
+      a schema for rawnav data, put here to keep code a bit tidier
+    """
+    
+    rawnav_data_schema = pa.schema([
+        pa.field('filename', pa.string()),
+        pa.field('index_run_start', pa.float64()), #converting because of lack of support for int64
+        pa.field('route', pa.string()),
+        pa.field('pattern', pa.float64()),
+        pa.field('route_pattern', pa.string()),
+        pa.field('wday', pa.string()),
+        pa.field('start_date_time', pa.timestamp('us')),
+        pa.field('end_date_time', pa.timestamp('us')),
+        pa.field('index_loc', pa.float64()),
+        pa.field('sec_past_st', pa.float64()),
+        pa.field('odom_ft',pa.float64()),
+        pa.field('door_state', pa.string()),
+        pa.field('row_before_apc', pa.float64()),
+        pa.field('stop_window', pa.string()),
+        pa.field('veh_state', pa.string()),
+        pa.field('heading', pa.float64()),
+        pa.field('lat', pa.float64()),
+        pa.field('long', pa.float64()),
+        pa.field('lat_raw', pa.float64()),
+        pa.field('long_raw',pa.float64()),
+        pa.field('sat_cnt', pa.float64()),
+        pa.field('blank', pa.float64())
+    ])
+        
+    return rawnav_data_schema
+
