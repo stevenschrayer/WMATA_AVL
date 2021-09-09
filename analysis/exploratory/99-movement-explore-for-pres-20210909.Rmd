@@ -3,16 +3,15 @@ title: "Movement Explore for Presentation"
 output: html_notebook
 ---
 
-```{r include=FALSE}
+```{r message=FALSE, warning=FALSE, include=FALSE}
 source('99-movement-explore-setup.R', local = TRUE)
 ```
-All examples in this notebook are for a 10AM Friday 30N 
 
 # Data Loads
 ```{r}
 rawnav_decomp_all <- 
   load_rawnav(
-    file.path(path_data,"test_decomp_mov15_all.csv")
+    file.path(path_data,"test_decomp_mov16_all.csv")
   ) %>%
   cleanup_things()
 
@@ -256,3 +255,190 @@ odom_chart(rawnav_decomp_fit,1000) %>% ggplotly()
 ```{r}
 odom_chart(rawnav_decomp_fit,100)
 ```
+
+
+## Look at stop_id_group_ext
+
+What are the distributions of values around a particular stop?
+
+18145 is Potomac Ave stop for 30N SB.
+
+```{r}
+rawnav_decomp_18145 <-
+  rawnav_decomp_all %>%
+  filter(
+    stop_id_group_ext == 18145
+  ) 
+
+rawnav_decomp_18145_grpd <-
+  rawnav_decomp_18145 %>%
+  group_by(
+    filename,
+    index_run_start,
+    basic_decomp_ext
+  ) %>%
+  summarize(
+    tot_secs = sum(secs_marg, na.rm = TRUE),
+    tot_odom = sum(odom_ft_marg, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+
+```{r}
+decomp_box <-
+  function(data,cut_value, tot_value){
+  data %>%
+  ggplot(
+    aes(
+      x = {{cut_value}}, 
+      y = {{tot_value}}, 
+      fill = {{cut_value}}
+    )
+  )+
+  geom_jitter(width = .2, alpha = .5, color = "grey70") + 
+  geom_boxplot(outlier.shape = NA, alpha = .75) +
+  theme_minimal() +
+  scale_fill_manual(
+    values = c(
+            # based on brewer qualitative set 3
+            "steady" = "#80b1d3",
+            "decel_doors" = "#ffffb3",
+            "decel_nodoors" = "#bebada",
+            "stopped_doors" = "#fb8072",
+            "stopped_nodoors" = "#fdb462",
+            "accel_doors" = "#8dd3c7",
+            "accel_nodoors" = "#bebada",
+            "other_delay" = "#bebada",
+            "atstop_doors_pre_C_S" = "#fdb462",
+            "atstop_doors_at_O_S" = "#fb8072",
+            "atstop_doors_post_C_S" = "#fdb462",
+            "atstop_doors_post_C_M" = "#bebada",
+            "atstop_doors_post_O_S" = "#fb8072",
+            "notatstop_nodoors_na_C_S" = "#fdb462",
+            "passstop" = "#80b1d3",
+            "atstop_nodoors_na_C_S" = "#fdb462",
+            "atstop_doors_pre_C_M" = "#bebada",
+            "notatstop_doors_pre_C_S" = "#fdb462",
+            "notatstop_doors_at_O_S" = "#fb8072",
+            "notatstop_doors_post_C_S" = "#fdb462",
+            "notatstop_nodoors_na_C_M" = "#bebada",
+            "notatstop_doors_pre_C_M" = "#bebada",
+            "notatstop_doors_post_C_M" = "#bebada",
+            "atstop_nodoors_na_C_M" = "#bebada",
+            "notatstop_doors_post_O_S" = "#fb8072"
+          )
+  ) +
+  scale_color_manual(
+    values = c(
+            # based on brewer qualitative set 3
+            "steady" = "#80b1d3",
+            "decel_doors" = "#ffffb3",
+            "decel_nodoors" = "#bebada",
+            "stopped_doors" = "#fb8072",
+            "stopped_nodoors" = "#fdb462",
+            "accel_doors" = "#8dd3c7",
+            "accel_nodoors" = "#bebada",
+            "other_delay" = "#bebada",
+            "atstop_doors_pre_C_S" = "#fdb462",
+            "atstop_doors_at_O_S" = "#fb8072",
+            "atstop_doors_post_C_S" = "#fdb462",
+            "atstop_doors_post_C_M" = "#bebada",
+            "atstop_doors_post_O_S" = "#fb8072",
+            "notatstop_nodoors_na_C_S" = "#fdb462",
+            "passstop" = "#80b1d3",
+            "atstop_nodoors_na_C_S" = "#fdb462",
+            "atstop_doors_pre_C_M" = "#bebada",
+            "notatstop_doors_pre_C_S" = "#fdb462",
+            "notatstop_doors_at_O_S" = "#fb8072",
+            "notatstop_doors_post_C_S" = "#fdb462",
+            "notatstop_nodoors_na_C_M" = "#bebada",
+            "notatstop_doors_pre_C_M" = "#bebada",
+            "notatstop_doors_post_C_M" = "#bebada",
+            "atstop_nodoors_na_C_M" = "#bebada",
+            "notatstop_doors_post_O_S" = "#fb8072"
+          )
+  ) +
+  labs(
+    x = "Decomposition",
+    y = "Total Seconds",
+    fill = "Decomposition",
+    color = NA
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = .5, hjust = 1 )
+  )
+  }
+
+```
+
+```{r}
+
+rawnav_decomp_18145_grpd %>%
+  filter(basic_decomp_ext %in% c("decel_nodoors","stopped_nodoors", "accel_nodoors")) %>%
+  mutate(
+    basic_decomp_ext = 
+      fct_relevel(
+        basic_decomp_ext,
+        "decel_nodoors",
+        "stopped_nodoors",
+        "accel_nodoors"
+      )
+  ) %>%
+  decomp_box(basic_decomp_ext, tot_secs)
+
+```
+
+
+```{r}
+rawnav_decomp_18145_grpd %>%
+  filter(basic_decomp_ext %in% c("decel_doors","stopped_doors", "accel_doors")) %>%
+  mutate(
+    basic_decomp_ext = 
+      fct_relevel(
+        basic_decomp_ext,
+        "decel_doors",
+        "stopped_doors",
+        "accel_doors"
+      )
+  ) %>%
+  decomp_box(basic_decomp_ext, tot_secs)
+```
+
+```{r}
+rawnav_decomp_18145_stopgrpd <-
+  rawnav_decomp_18145 %>%
+  group_by(
+    filename,
+    index_run_start,
+    stop_decomp_ext
+  ) %>%
+  summarize(
+    tot_secs = sum(secs_marg, na.rm = TRUE),
+    tot_odom = sum(odom_ft_marg, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+
+```{r}
+rawnav_decomp_18145_stopgrpd %>%
+  filter(str_detect(stop_decomp_ext,"_doors")) %>%
+   mutate(
+    stop_decomp_ext = 
+      fct_relevel(
+        stop_decomp_ext,
+        "atstop_doors_pre_C_S",
+        "atstop_doors_pre_C_M",
+        "atstop_doors_at_O_S",
+        "atstop_doors_post_C_M",
+        "atstop_doors_post_O_S",
+        "atstop_doors_post_C_S"
+      ),
+    stop_decomp_ext =
+      fct_rev(stop_decomp_ext)
+  ) %>%
+  decomp_box(stop_decomp_ext, tot_secs) +
+  coord_flip() 
+```
+

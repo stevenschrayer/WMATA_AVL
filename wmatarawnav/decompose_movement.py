@@ -300,7 +300,8 @@ def create_stop_segs(
         .groupby(['filename','index_run_start','stopped_changes_collapse'])
         .agg(
             # for now, just associating this to accel/decel
-            door_case = ('door_case','first')
+            door_case = ('door_case','first'),
+            stop_id_group = ('stop_id_group','first')
         )
         .reset_index()
     )
@@ -331,6 +332,10 @@ def create_stop_segs(
             how = "left",
             suffixes = ('','_next')            
         )
+    )
+    
+    rawnav = (
+        rawnav        
         # these fills aren't strictly speaking accurate, but we want to cover the 
         # case where the look ahead and behind is not NA for first and last case
         .assign(
@@ -354,6 +359,17 @@ def create_stop_segs(
                     x.basic_decomp + "_" + x.door_case
                 ],
                 default = x.basic_decomp
+            ),
+            stop_id_group_ext = lambda x: np.select(
+                [
+                    x.basic_decomp.eq('accel'),
+                    x.basic_decomp.eq('decel')
+                ],
+                [
+                    x.stop_id_group_prev,
+                    x.stop_id_group_next
+                ],
+                default = x.stop_id_group
             )
         )
         .drop(
@@ -361,7 +377,9 @@ def create_stop_segs(
              'stopped_changes_collapse_next',
              'stopped_changes_collapse_prev',
              'door_case_prev',
-             'door_case_next'],
+             'door_case_next',
+             'stop_id_group_prev',
+             'stop_id_group_next'],
             axis = 'columns'
         )
     )
