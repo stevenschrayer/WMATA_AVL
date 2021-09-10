@@ -10,6 +10,8 @@ import pandas as pd, os, sys, shutil
 import pyarrow as pa
 import pyarrow.parquet as pq
 from dotenv import dotenv_values
+import numpy as np
+import gc
 
 if os.getlogin() == "WylieTimmerman":
     # Working Paths
@@ -28,7 +30,7 @@ else:
                             ZippedFilesloc, and path_processed_data in a new elif block")
 
 import wmatarawnav as wr
-analysis_routes = ['30N','30S','32','33','36']
+analysis_routes = ['30N','30S','32','33','36','37','39','42','43','G8']
 # later = ['37','39','42','43','G8']
 # analysis_routes = ['G8']
 
@@ -96,25 +98,48 @@ for key, datadict in route_rawnav_tag_dict.items():
 
 out_rawnav_dat = pd.concat(rawnav_data_dict).reset_index(drop = True)
 
-breakpoint()
+# there was one row that didn't parse correctly in raw, which we don't check
+# this led to problem here. Even after converting to float, it still came out as
+# an object, which lead to save error. Since we don't use long_raw I just set to np.nan,
+# didn't drop since i didn't want to run into unexpected errors later where column isn't
+# presetn
+out_rawnav_dat = (
+    out_rawnav_dat 
+    .assign(
+        long_raw = np.nan,
+        route=lambda x: x.route.astype('str'),
+        #should be okay as int32 if everything goes to plan, but for safety will keep as double
+        # and convert pattern later
+        # ran into issues with this ealrier and persisting in updated code
+        pattern=lambda x: x.pattern.astype('double') 
+    )        
+)
+
 del rawnav_data_dict
 del route_rawnav_tag_dict
+gc.collect()
 #### Output
 # Path Setup
-path_rawnav_data = os.path.join(path_processed_data, "rawnav_data_mult.parquet")
+path_rawnav_data = os.path.join(path_processed_data, "rawnav_data_hi.parquet")
 
 if os.path.isdir(path_rawnav_data):
     shutil.rmtree(os.path.join(path_rawnav_data), ignore_errors=True) 
 if not os.path.isdir(path_rawnav_data):
     os.mkdir(path_rawnav_data)
-  
-(
- pq.write_to_dataset(
-     pa.Table.from_pandas(
-         out_rawnav_dat,
-         schema = wr.rawnav_data_simple_schema()
-     ), 
-     root_path=os.path.join(path_rawnav_data),
-     partition_cols=['route'])
-)    
+    
+# i hit memory errors if we didn't loop
+for analysis_route in analysis_routes:
+    
+    path_rawnav_route = os.path.join(path_rawnav_data,"route={}".format(analysis_route))
+    
+    route_rawnav_dat = out_rawnav_dat.loc[out_rawnav_dat.route.eq(analysis_route)]
+
+    pq.write_to_dataset(
+        pa.Table.from_pandas(
+            route_rawnav_dat,
+            schema = wr.rawnav_data_simple_schema()
+        ), 
+        root_path=os.path.join(path_rawnav_data),
+        partition_cols=['route']
+    )
  
