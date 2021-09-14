@@ -70,6 +70,7 @@ for analysis_route in analysis_routes:
                 'pattern',
                 'direction', #same as pattern_name_wmata_schedule
                 'stop_id',
+                'stop_sequence',
                 'filename',
                 'index_run_start',
                 'index_loc',
@@ -136,7 +137,9 @@ for analysis_route in analysis_routes:
     rawnav_route = (
         rawnav_route
         .groupby(['filename','index_run_start'])
-        .apply(lambda x: wr.reset_odom(x,indicator_val = 58, indicator_var = 'stop_id_group'))
+        # reset odometer to be zero at second stop in order in the pattern
+        # note that if you don't have a second stop, you just get ditched.
+        .apply(lambda x: wr.reset_odom(x, indicator_val = 2, indicator_var = 'stop_sequence_loc'))
         .reset_index(drop = True)
     )
     

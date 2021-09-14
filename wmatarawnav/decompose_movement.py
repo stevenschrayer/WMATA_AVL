@@ -34,7 +34,12 @@ def reset_odom(
         # TODO: oddly, there are a lot of pings that should've been matched to 
         # a nearby stop but weren't. For now, i'm just going to skip these,
         # but we need to look at the processing code more.
-        print("ditching: " + rawnav.filename.iloc[1] + "_" + str(rawnav.index_run_start.iloc[1]))
+        print(
+            "no matching indicator var/val, ditching: " + 
+            rawnav.filename.iloc[1] + 
+            "_" + 
+            str(rawnav.index_run_start.iloc[1])
+        )
         return(None)
     
     for var in reset_vars:
@@ -59,16 +64,22 @@ def match_stops(
     #### Find the nearest point to any stop
     # NOTE: somehow all of the trips we tested on didn't have stops here, so we 
     # address later.
-    # This adds a column 'stop_id_loc'
+    # This adds a column 'stop_id_loc' and 'stop_sequence_loc'
     # TODO: somehow this isn't joining quite right on index_loc, and i'm not
     # sure why. Will need to revist processing code, but for now, may not rely on
     # stop_id_loc much
+
     rawnav = (
         rawnav
         .merge(
             stop_index
-            .filter(items = ['filename','index_run_start','index_loc','stop_id'])
-            .rename(columns = {'stop_id' : 'stop_id_loc'}),
+            .filter(items = ['filename','index_run_start','index_loc','stop_id','stop_sequence'])
+            .rename(
+                columns = {
+                    'stop_id' : 'stop_id_loc',
+                    'stop_sequence' : 'stop_sequence_loc'
+                }
+            ),
             left_on = ['filename','index_run_start','index_loc'],
             right_on = ['filename','index_run_start','index_loc'],
             how = "left"
