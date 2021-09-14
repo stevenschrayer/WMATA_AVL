@@ -1293,7 +1293,7 @@ def apply_smooth(rawnav_ti):
     
     try:
         # this can error on very short data frames where interpolation can't take place
-        rawnav_ex.loc['fps_next_sm'] = savitzky_golay(rawnav_ex.fps_next.to_numpy(), 21, 3)    
+        rawnav_ex['fps_next_sm'] = savitzky_golay(rawnav_ex.fps_next.to_numpy(), 21, 3)    
     except:
         # where interpolation fails, we just return the original values
         rawnav_ex['fps_next_sm'] = rawnav_ex['fps_next']
