@@ -36,9 +36,9 @@ def reset_odom(
         # but we need to look at the processing code more.
         print(
             "no matching indicator var/val, ditching: " + 
-            rawnav.filename.iloc[1] + 
+            rawnav.filename.iloc[0] + 
             "_" + 
-            str(rawnav.index_run_start.iloc[1])
+            str(rawnav.index_run_start.iloc[0])
         )
         return(None)
     
@@ -1234,7 +1234,6 @@ def savitzky_golay(y, window_size, order, deriv=0, rate=1):
        Cambridge University Press ISBN-13: 9780521880688
     """
 
-    
     try:
         window_size = np.abs(int(window_size))
         order = np.abs(int(order))
