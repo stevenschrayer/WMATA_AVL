@@ -657,12 +657,13 @@ def decompose_mov(
             )    
         )
         .assign(
-            # cle
+            # even though this is more of an integer, for conversion to parquet later
+            # we just make it float64 now.
             door_changes = lambda x: 
                 np.where(
                     x.any_veh_stopped.eq(False),
-                    pd.NA,
-                    x.door_changes
+                    np.nan,
+                    x.door_changes.astype('float64')
                 )
         )
     )
@@ -935,6 +936,11 @@ def agg_sec(rawnav):
         .drop(
             ['dupes','stop_window'],
             axis = "columns"
+        )
+        # we have issues with some columns after the concat in that they don't always
+        .assign(
+            row_before_apc = lambda x: x.row_before_apc.astype(str),
+            blank = lambda x: x.blank.astype(str)
         )
     )
     

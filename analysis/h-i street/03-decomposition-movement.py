@@ -155,7 +155,14 @@ for analysis_route in analysis_routes:
     ) 
                 
     pq.write_to_dataset(
-        table = pa.Table.from_pandas(rawnav_route),
+        table = (
+            pa.Table.from_pandas(
+                rawnav_route,
+                # this may be unnecessary--found a few issues at end where arrow would
+                # try to convert objects to other types if i didn't explicitly cast
+                schema = wr.rawnav_decomp_schema()
+            )
+        ),
         root_path = path_decomp,
         partition_cols = ['route']
     )

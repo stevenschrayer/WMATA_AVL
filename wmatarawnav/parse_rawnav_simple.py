@@ -275,3 +275,77 @@ def rawnav_data_simple_schema():
         
     return rawnav_data_schema
 
+
+def rawnav_decomp_schema():
+    """
+    Returns
+    -------
+    rawnav_data_schema: pa.schema,
+      a schema for rawnav data, put here to keep code a bit tidier
+    """
+    # NOTE: this silently drops index_run_end, since we didn't bring that along in the 
+    # parse rawnav schema above
+    rawnav_data_schema = pa.schema([
+        pa.field('filename', pa.string()),
+        pa.field('index_run_start', pa.float64()), #converting because of lack of support for int64
+        pa.field('route', pa.string()),
+        pa.field('pattern', pa.float64()),
+        pa.field('route_pattern', pa.string()),
+        pa.field('wday', pa.string()),
+        pa.field('start_date_time', pa.timestamp('us')),
+        pa.field('end_date_time', pa.timestamp('us')),
+        pa.field('index_loc', pa.float64()),
+        pa.field('sec_past_st', pa.float64()),
+        pa.field('odom_ft',pa.float64()),
+        pa.field('door_state', pa.string()),
+        pa.field('veh_state', pa.string()),
+        pa.field('heading', pa.float64()),
+        pa.field('lat', pa.float64()),
+        pa.field('long', pa.float64()),
+        pa.field('lat_raw', pa.float64()),
+        pa.field('long_raw',pa.float64()),
+        pa.field('sat_cnt', pa.float64()),
+        pa.field('collapsed_rows', pa.float64()),  #was int64         
+        pa.field('odom_ft_min', pa.float64()),      
+        pa.field('odom_ft_max', pa.float64()),      
+        pa.field('door_state_all', pa.string()),      
+        pa.field('stop_window_e', pa.string()),      
+        pa.field('stop_window_x', pa.string()),      
+        pa.field('row_before_apc', pa.string()),      
+        pa.field('blank', pa.string()),      
+        pa.field('odom_ft_next', pa.float64()),      
+        pa.field('sec_past_st_next', pa.float64()),      
+        pa.field('secs_marg', pa.float64()),      
+        pa.field('odom_ft_marg', pa.float64()),      
+        pa.field('fps_next', pa.float64()),      
+        pa.field('fps_next_sm', pa.float64()),      
+        pa.field('accel_next', pa.float64()),      
+        pa.field('jerk_next', pa.float64()),      
+        pa.field('fps3', pa.float64()),      
+        pa.field('accel3', pa.float64()),      
+        pa.field('jerk3', pa.float64()),      
+        pa.field('accel9', pa.float64()),      
+        pa.field('veh_state_calc', pa.string()),      
+        pa.field('basic_decomp', pa.string()),      
+        pa.field('stopped_changes_collapse', pa.float64()),   # was int32         
+        pa.field('any_door_open', pa.bool_()),       
+        pa.field('any_veh_stopped', pa.bool_()),       
+        pa.field('door_changes', pa.float64()),      
+        pa.field('relative_to_firstdoor', pa.string()),      
+        pa.field('door_case', pa.string()),      
+        pa.field('pax_activity', pa.string()),      
+        pa.field('stop_decomp', pa.string()),      
+        pa.field('stop_id_loc', pa.float64()),      
+        pa.field('stop_sequence_loc', pa.float64()),      
+        pa.field('stop_id_group', pa.float64()),      
+        pa.field('stop_case', pa.string()),      
+        pa.field('stop_decomp_ext', pa.string()),      
+        pa.field('trip_seg', pa.string()),      
+        pa.field('basic_decomp_ext', pa.string()),      
+        pa.field('stop_id_group_ext', pa.float64()),      
+        pa.field('odom_ft_og', pa.float64()),      
+        pa.field('sec_past_st_og', pa.float64())       
+    ])
+        
+    return rawnav_data_schema
+
