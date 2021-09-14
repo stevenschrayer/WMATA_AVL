@@ -1240,20 +1240,32 @@ def savitzky_golay(y, window_size, order, deriv=0, rate=1):
     return np.convolve( m[::-1], y, mode='valid')
 
 def expand_rawnav(rawnav_ti):
-    
     rawnav_ti_expand = (
         pd.DataFrame(
-            {'sec_past_st': np.arange(rawnav_ti.sec_past_st.min(), rawnav_ti.sec_past_st.max(),1 )} 
-        )
-        .merge(
-             rawnav_ti[['sec_past_st','fps_next']],
-             on = 'sec_past_st',
-             how = 'left'
-        )
-        .assign(
-            fps_next = lambda x: x.fps_next.ffill(),
+            {'sec_past_st' : np.arange(rawnav_ti.sec_past_st.min(), rawnav_ti.sec_past_st.max(),1 )} 
         )
     )
+    
+    # this will happen when you have only one row of input data.
+    # see for instance rawnav06424171024.txt at 4258
+    # likely better to just ditch these trip instances earlier, but trying to 
+    # make functions a bit more resilient.
+    # Usually if you have this problem we still have to do other error handling later, 
+    # however.
+    if (rawnav_ti_expand.shape == (0,1)):
+        rawnav_ti_expand = rawnav_ti[['sec_past_st','fps_next']]
+    else:
+        rawnav_ti_expand = (
+            rawnav_ti_expand
+            .merge(
+                 rawnav_ti[['sec_past_st','fps_next']],
+                 on = 'sec_past_st',
+                 how = 'left'
+            )
+            .assign(
+                fps_next = lambda x: x.fps_next.ffill(),
+            )
+        )
     
     return(rawnav_ti_expand)
 
@@ -1263,7 +1275,12 @@ def expand_rawnav(rawnav_ti):
 def apply_smooth(rawnav_ti):
     rawnav_ex = expand_rawnav(rawnav_ti)
     
-    rawnav_ex['fps_next_sm'] = savitzky_golay(rawnav_ex.fps_next.to_numpy(), 21, 3)    
+    try:
+        # this can error on very short data frames where interpolation can't take place
+        rawnav_ex.loc['fps_next_sm'] = savitzky_golay(rawnav_ex.fps_next.to_numpy(), 21, 3)    
+    except:
+        # where interpolation fails, we just return the original values
+        rawnav_ex['fps_next_sm'] = rawnav_ex['fps_next']
     
     rawnav_ex = (
         rawnav_ex
