@@ -112,13 +112,13 @@ def match_stops(
         .rename({'stop_id': 'stop_id_group'}, axis = 'columns')
         # we need index_loc at the end, but we will drop it from some interim joins
         .filter(['filename','index_run_start','stop_id_group','odom_ft_stop','index_loc'])
-        .sort_values(['odom_ft_stop'])
+        .sort_values(['odom_ft_stop','index_loc'])
     )
     
     rawnav_fil = rawnav.copy()
     
     query_list = [
-        'stop_decomp == "doors_on_O_S"',
+        'stop_decomp == "doors_at_O_S"',
         'door_case == "doors"',
         'door_case == "nodoors"'
     ]
