@@ -29,9 +29,8 @@ if os.getlogin() == "WylieTimmerman":
     # other things for wylie's dev environment            
 
 # Globals
-hi_routes = ['30N','30S','32','33','36','37','39','42','43','G8']
-analysis_routes = ['37']
-analysis_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+hi_routes = ['37','39','42','43','G8','30N','30S','32','33','36']
+analysis_routes = hi_routes
 # EPSG code for WMATA-area work
 wmata_crs = 2248
 
