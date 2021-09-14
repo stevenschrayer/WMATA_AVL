@@ -45,7 +45,6 @@ else:
 # Globals
 hi_routes = ['30N','30S','32','33','36','37','39','42','43','G8']
 analysis_routes = hi_routes
-analysis_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 # EPSG code for WMATA-area work
 wmata_crs = 2248
 
@@ -125,7 +124,8 @@ for analysis_route in analysis_routes:
         )
     )
 
-    nearest_rawnav_point_to_wmata_schedule_dat['stop_sequence'] = nearest_rawnav_point_to_wmata_schedule_dat['stop_sort_order'] + 1
+    # From schedule DB we don't add 1 here
+    nearest_rawnav_point_to_wmata_schedule_dat['stop_sequence'] = nearest_rawnav_point_to_wmata_schedule_dat['stop_sort_order'] 
 
     stop_index = (
         wr.assert_clean_stop_order_increase_with_odom(nearest_rawnav_point_to_wmata_schedule_dat)
