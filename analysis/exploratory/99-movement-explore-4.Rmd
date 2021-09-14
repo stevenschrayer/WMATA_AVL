@@ -1,0 +1,540 @@
+---
+title: "Movement Explore 4"
+output: html_notebook
+---
+
+# Setup
+```{r include=FALSE}
+library(tidyverse)
+library(sf)
+library(mapview)
+library(plotly)
+
+path_sp <- "C:/OD/Foursquare ITP/Projects - WMATA Datamart"
+
+path_data <-
+  file.path(
+    path_sp,
+    "Task 3 - Bus Priority",
+    "Data",
+    "01-Interim"
+  )
+
+options(scipen = 999)
+
+```
+
+```{r, fig.width=6, fig.height=4}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+Define useful functions
+```{r, fig.width=6, fig.height=4}
+
+load_rawnav <- 
+  function(thepath){
+    suppressWarnings({
+      read_csv(
+        thepath,
+        col_types = cols(
+          X1 = col_double(),
+          index_loc = col_double(),
+          lat = col_double(),
+          long = col_double(),
+          heading = col_double(),
+          door_state = col_character(),
+          veh_state = col_character(),
+          odom_ft = col_double(),
+          sec_past_st = col_double(),
+          sat_cnt = col_double(),
+          stop_window = col_character(),
+          blank = col_double(),
+          lat_raw = col_double(),
+          long_raw = col_double(),
+          row_before_apc = col_double(),
+          route_pattern = col_character(),
+          pattern = col_double(),
+          index_run_start = col_double(),
+          index_run_end = col_double(),
+          filename = col_character(),
+          start_date_time = col_datetime(format = ""),
+          route = col_character(),
+          wday = col_character(),
+          odom_ft_next = col_double(),
+          sec_past_st_next = col_double(),
+          odom_ft_next3 = col_double(),
+          sec_past_st_next3 = col_double(),
+          secs_marg = col_double(),
+          odom_ft_marg = col_double(),
+          fps_next = col_double(),
+          fps_next3 = col_double()
+        )
+      )
+    })
+    
+  }
+
+
+cleanup_things <- function(rawnav){
+  rawnav %>%
+    st_as_sf(
+      ., 
+      coords = c("long", "lat"),
+      crs = 4326L, #WGS84
+      agr = "constant"
+    ) %>%
+    mutate(
+      mins_past_st = sec_past_st / 60,
+      mph_next = fps_next / 1.467,
+      mph_next3 = fps_next3 / 1.467,
+      fps_next_lead = lead(fps_next),
+      fps_next3_lead = lead(fps_next3),
+      accel_next = (fps_next_lead - fps_next) / (sec_past_st_next - sec_past_st),
+      accel_next3 = (fps_next3_lead - fps_next3) / (sec_past_st_next3 - sec_past_st),
+      accel_next = round(accel_next,3),
+      accel_next3 = round(accel_next3,3),
+      accel_mph_next = accel_next / 1.467,
+      accel_mph_next3 = accel_next3 / 1.467
+    )
+}
+
+plot_rawnav <-
+  function(rawnav, var, thetitle = NULL,odom_min = NULL,odom_max = NULL){
+    if (is.null(thetitle)){
+      thetitle = rlang::as_label(enquo(var))
+    }
+    
+    if (is.environment(rawnav)){
+        thedata <- rawnav$data()
+    } else {
+        thedata <- rawnav
+    }
+    
+    varclass <- thedata %>% pull({{var}}) %>% class()
+
+    g <- 
+      ggplot(
+        data = rawnav
+      ) +
+      geom_line(
+        aes(
+          y = odom_ft,
+          x = sec_past_st
+        ),
+        color = "grey80"
+      ) +
+      geom_point(
+        aes(
+          color = {{var}},
+          y = odom_ft,
+          x = sec_past_st
+        )
+      ) +
+      xlab("Time Past Trip Start (Seconds)") +
+      ylab("Trip Odometer Distance (Feet)") +
+      theme_minimal()
+
+    if (all(varclass == "numeric")){
+      g <-
+        g +
+        scale_color_gradient2(
+          low = "#d7191c",
+          mid = "#ffffbf",
+          high = "#1a9641"
+        ) +
+        guides(color=guide_legend(title=thetitle))
+      
+    } else if (any("factor" %in% varclass)) {
+      g <- 
+        g + 
+        scale_color_brewer(
+          type = "div",
+          palette = "RdYlGn",
+          drop = FALSE
+        ) +
+        guides(color=guide_legend(title=thetitle))
+    }
+      
+    
+    # g
+    gplot <- 
+      ggplotly(g, dynamicTicks = TRUE) 
+    
+    if (!is.null(odom_min) & !is.null(odom_max)){
+      sec_range <-
+        thedata %>% # because we expect weird thing
+        filter_range(odom_min,odom_max) %>%
+        pull(sec_past_st) %>%
+        range()
+      
+      gplot <-
+        gplot %>%
+        layout(
+          yaxis = 
+            list(
+              range = c(odom_min, odom_max),
+              autorange = FALSE
+            ),
+          xaxis = 
+            list(
+              range = sec_range,
+              autorange = FALSE
+            )
+          )
+    }
+    
+    return(gplot)
+    
+  }
+
+create_divergent_breaks <- function(vec,totn = 9, zero_cat = TRUE){
+  
+  # remove 0's (sometimes better for generating breaks)
+  abs.vec <- 
+  # and set all to positive before calculating
+    vec[vec != 0] %>%
+    na.omit() %>%
+    as.vector() %>%
+    abs()
+  
+  # creating 4 so that we have 3 above mid; could make param
+  # TODO: totn should change here if you have zero_cat = FALSE
+  ints <- classInt::classIntervals(abs.vec, n= (totn/2)-1, style = "jenks")
+  # round top to avoid weird scientific notation, then cut rest to 4 digits
+  ints$brks[length(ints$brks)] <- ceiling(ints$brks[length(ints$brks)])
+  ints$brks <- round(ints$brks,digits = 4)
+  
+  if (any(vec <0) & !all(vec <0)){
+    allbreaks <- sort(c(-ints$brks, ints$brks))
+    
+    if (!zero_cat) {
+      
+      allbreaks <- allbreaks[!base::duplicated(allbreaks)]
+    }
+    
+    allbreaks
+  } else {
+    stop('didnt plan for non zero midpoint case')
+  }
+}
+
+filter_range <- function(df,themin,themax){
+  df <- 
+    df %>%
+  filter(
+    (odom_ft >= themin) & (odom_ft <= themax)
+  ) %>%
+  select(
+    index_loc,
+    odom_ft,
+    sec_past_st,
+    fps_next,
+    accel_next
+  )
+  
+  if (nrow(df) < 2){
+    stop('range of filter values too narrow')
+  }
+  
+  return(df)
+}
+
+```
+
+```{r, fig.width=6, fig.height=4}
+rawnav <-
+  load_rawnav(
+    file.path(path_data,"test_checkfixed6_newaccel2.csv")
+  ) %>%
+  mutate(
+    mins_past_st = sec_past_st / 60,
+    accel_next_mph = accel_next / 1.467
+  )
+```
+
+```{r, fig.width=6, fig.height=4}
+thebrks <- create_divergent_breaks(rawnav$accel_next,totn = 11, zero_cat = FALSE)
+
+thebrks
+```
+
+
+```{r, fig.width=6, fig.height=4}
+thebreaks2 <- c(-46, -14, -6.5, -2.5, 2.5, 6.5, 14, 46)
+
+rawnav %>%
+  mutate(
+    accel_next_bin = 
+      base::cut(
+        accel_next,
+        breaks = thebreaks2,
+        include.lowest = TRUE,
+        ordered_result = TRUE
+      )
+  ) %>%
+  plotly::highlight_key(.,~accel_next) %>%
+  plot_rawnav(var = accel_next_bin,odom_min = 17587, odom_max = 18504)
+```
+
+```{r, fig.width=6, fig.height=4}
+rawnav_fil <-
+  filter_range(rawnav,17587,18504)
+```
+
+could find the speeds at which there's little acceleration, then look for the first and last appearance of that speed in any particular group. That might help to clarify where stead ystate is
+
+
+```{r, fig.width=6, fig.height=4}
+rawnav_fil$accel_next %>% summary()
+```
+
+what are the speeds people are going at when they are not accelerating
+
+but this includes some cases where the bus is stopped and has zero acceleration
+
+(could do this better by maybe weighting by dist or time)
+```{r, fig.width=6, fig.height=4}
+rawnav_fil %>%
+  filter(
+    (accel_next < 2.5) & (accel_next > -2.5)  
+  ) %>%
+  pull(
+    fps_next
+  ) %>%
+  summary()
+```
+
+```{r, fig.width=6, fig.height=4}
+rawnav_fil %>%
+  filter(
+    # no acceleration change
+    ((accel_next < 2.5) & (accel_next > -2.5)) &
+      fps_next > 7.335 # and greater than 5mph
+  ) %>%
+  pull(
+    fps_next
+  ) %>%
+  summary()
+```
+So maybe like 34.31 is the freeflow
+
+```{r, fig.width=6, fig.height=4}
+rawnav_fil %>%
+  filter(
+    # no acceleration change
+    ((accel_next < 2.5) & (accel_next > -2.5)) &
+      fps_next > 7.335 # and greater than 5mph
+  ) %>%
+  pull(
+    fps_next
+  ) %>%
+  quantile(.05)
+```
+Yeah, i guess 29 fps kind of lines up with where you'd think the steady state is.
+```{r, fig.width=6, fig.height=4}
+rawnav %>%
+  plotly::highlight_key(.,~accel_next) %>%
+  plot_rawnav(var = fps_next,odom_min = 17587, odom_max = 18504)
+```
+
+So now we need to break the trips into stopped and moving groups, then run this little algorithm on each
+
+for decel, could work backwards from stopped to last steady state case,
+same for accel
+
+# let's try it!
+
+```{r, fig.width=6, fig.height=4}
+rawnav_decomp <-
+  load_rawnav(
+    file.path(path_data,"test_decomp_mov.csv")
+  ) %>%
+  mutate(
+    thelabel = 
+      paste0(
+        "accel: ",round(accel_next,1),
+        ", fps: ", round(fps_next,1)
+      )
+  )
+```
+
+```{r, fig.width=6, fig.height=4}
+plot_rawnav_man <-
+  function(rawnav, var, thetitle = NULL,odom_min = NULL,odom_max = NULL){
+    if (is.null(thetitle)){
+      thetitle = rlang::as_label(enquo(var))
+    }
+    
+    if (is.environment(rawnav)){
+        thedata <- rawnav$data()
+    } else {
+        thedata <- rawnav
+    }
+    
+    varclass <- thedata %>% pull({{var}}) %>% class()
+    suppressWarnings({ # issue with text hack and plotly creates warning
+    g <- 
+      ggplot(
+        data = rawnav
+      ) +
+      geom_line(
+        aes(
+          y = odom_ft,
+          x = sec_past_st
+        ),
+        color = "grey80"
+      ) +
+      geom_point(
+        aes(
+          color = {{var}},
+          y = odom_ft,
+          x = sec_past_st,
+          text = thelabel
+        )
+      ) +
+      xlab("Time Past Trip Start (Seconds)") +
+      ylab("Trip Odometer Distance (Feet)") +
+      theme_minimal()
+    })
+
+      g <-
+        g +
+        scale_color_manual(
+          values = c(
+            "steady" = "#80b1d3",
+            "decel" = "#ffffb3",
+            "stopped" = "#fb8072",
+            "accel" = "#8dd3c7",
+            "other_delay" = "#bebada"
+          )
+        ) +
+        guides(color=guide_legend(title=thetitle))
+    
+    # g
+    gplot <- 
+      ggplotly(g, dynamicTicks = TRUE, tooltip = c("x","y","colour","text")) 
+    
+    if (!is.null(odom_min) & !is.null(odom_max)){
+      sec_range <-
+        thedata %>% # because we expect weird thing
+        filter_range(odom_min,odom_max) %>%
+        pull(sec_past_st) %>%
+        range()
+
+      # add a little room
+      inter_sec_range <- sec_range[2] - sec_range[1]
+      sec_range[1] <- sec_range[1] - inter_sec_range * .25
+      sec_range[2] <- sec_range[2] + inter_sec_range * .25
+      
+      # odom _range
+      inter_odom_range <- odom_max - odom_min
+      odom_min <- odom_min - inter_odom_range * .25
+      odom_max <- odom_max + inter_odom_range * .25
+      
+      gplot <-
+        gplot %>%
+        layout(
+          yaxis = 
+            list(
+              range = c(odom_min, odom_max),
+              autorange = FALSE
+            ),
+          xaxis = 
+            list(
+              range = sec_range,
+              autorange = FALSE
+            )
+          )
+    }
+    
+    return(gplot)
+    
+  } 
+
+```
+
+So this looks okay; not sure about that one other_delay bit, but okay. Not sure what to do about that, exactly. It's actually 
+```{r, fig.width=6, fig.height=4}
+rawnav_decomp %>%
+  plot_rawnav_man(.,basic_decomp, odom_min = 17587, odom_max = 18504)
+```
+
+
+this looks okay near the middle of the route, though there are some other parts of the route that get 'other_delay' and i'm not sure how to term those exactly. Also interesting that those parts of the route in between two stopping actions get flagged with other delay too. Not sure if that makes sense in the long term.
+
+```{r, fig.width=6, fig.height=4}
+plot_rawnav_man(rawnav_decomp,basic_decomp, odom_min = 18515, odom_max = 22057)
+```
+
+Our logic seems to break down a bit here; everything looks like steady state.
+```{r, fig.width=6, fig.height=4}
+plot_rawnav_man(rawnav_decomp,basic_decomp, odom_min = 1500, odom_max = 1630)
+```
+
+this one looks kind of like what we want to get out of capturing the traffic delay and such. makes me think that steady state could get defined a little more tightly, as we kind of expect our steady state bits to be totally flat. we also don't see much acceleration early, which is weird.
+
+```{r, fig.width=6, fig.height=4}
+plot_rawnav_man(rawnav_decomp,basic_decomp, odom_min = 29630, odom_max = 32475)
+```
+
+# let's try again
+
+This time, we amp up the threshold for steady from the 10th percentile to the 25th. 
+```{r, fig.width=6, fig.height=4}
+rawnav_decomp2 <-
+  load_rawnav(
+    file.path(path_data,"test_decomp_mov2.csv")
+  ) %>%
+  mutate(
+    thelabel = 
+      paste0(
+        "steady fps: ", round(steady_fps,1),
+        "<br>fps: ", round(fps_next,1),
+        "<br>accel: ",round(accel_next,1)
+      )
+  )
+```
+
+difference between 27 and 28 just doesn't seem that major, especially if not initiated by some deceleration
+```{r, fig.width=6, fig.height=4}
+plot_rawnav_man(rawnav_decomp2,basic_decomp, odom_min = 6140, odom_max = 6535)
+```
+
+this seems to pick up the delay instances we're kind of looking for.
+
+The steady state speed is defined by the pings between the two red dots (something like 20 mph in this instance), but every time the bus hits delay, it gets a little bit slower in the steady state. As a
+```{r, fig.width=6, fig.height=4}
+plot_rawnav_man(rawnav_decomp2, basic_decomp, odom_min = 29630, odom_max = 32475)
+```
+
+Still kind of confused why i get alternating bits of other_delay. I guess it's because we drop below the steady state speed, but that seems a bit surprising
+
+```{r, fig.width=6, fig.height=4}
+rawnav_decomp2 %>%
+  plot_rawnav_man(.,basic_decomp, odom_min = 32114, odom_max = 32475)
+```
+the per 27336 28031
+SEems like the percentile thing leads to a few small drops in speed in what otherwise appears to be steady state to be a problem. Maybe changes from steady state should also be predicated on big accel/decel changes too?
+```{r, fig.width=6, fig.height=4}
+rawnav_decomp2 %>%
+  plot_rawnav_man(.,basic_decomp, odom_min = 27336, odom_max = 28031)
+```
+
+28069 and 29074 seem like the canonical examples
+```{r, fig.width=6, fig.height=4}
+rawnav_decomp2 %>%
+  plotly::highlight_key(.,~accel_next) %>%
+  plot_rawnav_man(.,basic_decomp, odom_min = 28069, odom_max = 29074)
+```
+
+
+41225 to 43655 seem like very ,very subtle examples of delay; probably a case that indicates we need to do more around accel
+
+```{r, fig.width=6, fig.height=4}
+rawnav_decomp2 %>%
+  plotly::highlight_key(.,~fps_next) %>%
+  plot_rawnav_man(.,basic_decomp, odom_min = 41225, odom_max = 43655)
+```
+
+the bends at 40k+ in steady also make me think that the accel/decel thing isn't perfectly calibrated yet.

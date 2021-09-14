@@ -1,0 +1,36 @@
+---
+title: "Movement Explore"
+output: html_notebook
+---
+
+```{r include=FALSE}
+source('99-movement-explore-setup.R', local = TRUE)
+```
+
+
+# Data Loads
+```{r}
+rawnav_decomp_all <- 
+  load_rawnav(
+    file.path(path_data,"test_decomp_mov11_all.csv")
+  ) %>%
+  cleanup_things()
+
+```
+
+# combindation cases
+
+Are there cases where a bus stops before the signal, then edges into the stop area to serve passengers?
+
+```{r}
+  rawnav_combo <-
+  rawnav_decomp_all %>%
+  group_by(filename,index_run_start) %>%
+  mutate(
+    has_double_stop =
+      if_else(
+        is_stopped
+      )
+  )
+```
+
