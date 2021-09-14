@@ -43,8 +43,8 @@ else:
                             " path_processed_data in a new elif block")
 
 # Globals
-# hi_routes = ['30N','30S','32','33','36','37','39','42','43','G8']
-analysis_routes = ['30N']
+hi_routes = ['30N','30S','32','33','36','37','39','42','43','G8']
+analysis_routes = hi_routes
 analysis_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 # EPSG code for WMATA-area work
 wmata_crs = 2248
@@ -90,7 +90,11 @@ for analysis_route in analysis_routes:
             use_pandas_metadata = True
         )
         .to_pandas()
-        
+        # Correcting for weirdness when writing to/ returning from parquet
+        .assign(
+            route = lambda x: x.route.astype(str),
+            pattern = lambda x: x.pattern.astype('int32', errors = "ignore")
+        )
     )
     
     rawnav_route_gdf = (
@@ -105,20 +109,20 @@ for analysis_route in analysis_routes:
     # Find rawnav point nearest each stop
     nearest_rawnav_point_to_wmata_schedule_dat = (
         wr.merge_rawnav_target(
-            target_dat=wmata_schedule_gdf,
-            rawnav_dat=rawnav_route_gdf
+            target_dat = wmata_schedule_gdf,
+            rawnav_dat = rawnav_route_gdf,
+            quiet = False
         )
         .reset_index(
-            drop = True,
-            inplace = True
+            drop = True
         )
     )
     
-    nearest_rawnav_point_to_wmata_schedule_dat.reset_index(drop=True, inplace=True)
-
     # Assert and clean stop data
     nearest_rawnav_point_to_wmata_schedule_dat = (
-        wr.remove_stops_with_dist_over_100ft(nearest_rawnav_point_to_wmata_schedule_dat)
+        wr.remove_stops_with_dist_over_100ft(
+            nearest_rawnav_point_to_wmata_schedule_dat
+        )
     )
 
     nearest_rawnav_point_to_wmata_schedule_dat['stop_sequence'] = nearest_rawnav_point_to_wmata_schedule_dat['stop_sort_order'] + 1

@@ -285,22 +285,33 @@ def merge_rawnav_target(target_dat, rawnav_dat, quiet=True):
     
     for name, rawnav_group in rawnav_groups:
         try:
-            target_dat_relevant = \
-                target_groups.get_group(
-                    (name[0], name[1]))
-            nearest_rawnav_point_to_target_dat = \
-                pd.concat([nearest_rawnav_point_to_target_dat,
-                           ll.ckdnearest(target_dat_relevant, rawnav_group)])
+            target_dat_relevant = (
+                target_groups
+                .get_group(
+                    (name[0], name[1])
+                )
+            )
+            
+            nearest_rawnav_point_to_target_dat = pd.concat([
+                nearest_rawnav_point_to_target_dat,
+                ll.ckdnearest(target_dat_relevant, rawnav_group)
+            ])
+            
         except:
             if (quiet == False):
                 print("No target geometry found for {} - {}".format(name[0],name[1]))
     
     nearest_rawnav_point_to_target_dat = (
-        ll.reorder_first_cols(nearest_rawnav_point_to_target_dat,
-                              ['filename','index_run_start','index_loc'])
+        ll.reorder_first_cols(
+            nearest_rawnav_point_to_target_dat,
+            ['filename',
+             'index_run_start',
+             'index_loc'
+             ]
+        )
     )
-        
-    return nearest_rawnav_point_to_target_dat
+
+    return(nearest_rawnav_point_to_target_dat)
 
 
 def remove_stops_with_dist_over_100ft(nearest_rawnav_point_to_wmata_schedule_data_):
