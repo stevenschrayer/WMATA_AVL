@@ -10,8 +10,8 @@ Created on Thu Sep 16 01:56:53 2021
 # except with python requests instead of curl/cli
 
 #### Libs
-import requests
 import pandas as pd
+import requests
 import json
 
 #### Test
