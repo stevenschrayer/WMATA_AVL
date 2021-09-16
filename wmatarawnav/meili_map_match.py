@@ -11,7 +11,8 @@ import pandas as pd
 import numpy as np
 
 def mapmatch(rawnav_ti):
-    
+    # refernece:
+    # https://valhalla.readthedocs.io/en/latest/api/map-matching/api-reference/
     #### Pre-process data
     use_shape = (
         rawnav_ti
@@ -37,7 +38,7 @@ def mapmatch(rawnav_ti):
     # We hard code these into the function since we don't think we'll 
     # want people to change this for rawnav
     use_costing = "bus"
-    use_shape_match = "walk_or_snap"
+    use_shape_match = "map_snap" # edge walk never seems to work with rawnav, so skip
     use_directions = dict(
         units = "miles",
         directions_type = "none"
@@ -92,7 +93,6 @@ def mapmatch(rawnav_ti):
         raise NameError("request failed")
     
     rjson = r.json()
-    
     #### Extract
     # Matched points
     rawnav_matched = (
@@ -163,9 +163,15 @@ def mapmatch(rawnav_ti):
             axis = "columns")    
     )
     
+    # TODO: incorporate OSM changeset id
+    
+    # TODO: get nodes in somehow to identify intersections
+    # TODO: do a bunch of trycatch if we get werid stuff back in map matching
+    
     #### Format return
     rawnav_return = (
         rawnav_ti
+        .reset_index(drop = True)
         .merge(
             rawnav_matched,
             how = "left",
