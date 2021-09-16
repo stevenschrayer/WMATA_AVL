@@ -16,37 +16,38 @@ import json
 
 #### Test
 
-# Coords
+#### Coords and Params
 latlongs = pd.DataFrame({
    "lat" : [41.318818, 41.321001],
    "lon" : [19.461336, 19.459598]
    }
 )
 
-use_latlon = latlongs.to_json(orient = "records")
-
 # Params
 use_costing = "auto"
 use_directions = dict(units = "miles")
 
-
 # Assemble request
-# NO
-
-
-# v2
-data_dict = (
+data = (
+    json.dumps(
         dict(
             locations = latlongs.to_dict(orient = "records"),
             costing = use_costing,
             directions_options = use_directions
         )
+    )
 )
-
-data = json.dumps(data_dict)
-
 url = "http://localhost:8002/route"
 headers = {'Content-type': 'application/json'}
 
+#### Run request
 r = requests.get(url, data=data, headers=headers)
-# so far, got failed to parse request
+
+if (r.status_code != 200):
+    raise NameError("request failed")
+
+rjson = r.json()
+
+rjsonloads = json.loads(rjson)
+# stopping here, from here we probably just need to start parsing the response for 
+# a DC case
