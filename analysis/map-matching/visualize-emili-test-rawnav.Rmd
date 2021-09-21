@@ -30,7 +30,8 @@ rawnav_matched <-
     .,
     coords = c("longmatch", "latmatch"),
     crs = 4326L, #WGS84
-    agr = "constant"
+    agr = "constant",
+    remove = FALSE
   )
 
 rawnav_og <-
@@ -145,4 +146,138 @@ mapview(rawnav_matched_ti, zcol = "distance_along_edge", layer.name = "Pct. Dist
 mapview(rawnav_matched_ti, zcol = "end_heading", alpha = 0, layer.name = "Street Heading")
 
 ```
+
+```{r}
+rawnav_all <-
+  read_csv(
+    file.path(path_data,"rawnav_matched.csv")
+  ) 
+```
+```{r}
+rawnav_all2 <-
+  rawnav_all %>%
+  filter(
+    wday %in% c("Monday","Tuesday","Wednesday","Thursday","Friday"),
+    pattern == 1 # i think is sb
+  ) %>%
+  mutate(
+    year = lubridate::year(start_date_time),
+    hour = lubridate::hour(start_date_time)
+  ) %>%
+  filter(
+    hour %in% c(6,7,8)
+  ) %>%
+  group_by(
+    year,
+    id,
+    way_id,
+    street_names
+  ) %>%
+  summarize(
+    speed_median = quantile(fps_next_sm,.5, na.rm= TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = year,
+    values_from = speed_median,
+    names_glue = "spd_{year}"
+  ) %>%
+  mutate(
+    speed_chng = (spd_2019 - spd_2017) / spd_2017,
+    speed_chng = na_if(speed_chng,Inf)
+  ) %>%
+  filter(
+    complete.cases(.)
+  )
+```
+
+```{r}
+example_geom2 <-
+  rawnav_matched_ti %>%
+  st_drop_geometry() %>%
+  group_by(
+    id,
+    way_id,
+    street_names
+  ) %>%
+  mutate(
+    n = if_else(row_number() == n(),2,1) 
+  ) %>%
+  uncount(weights = n, .remove = FALSE) %>%
+  ungroup() %>%
+  select(
+    index_loc,
+    id,
+    way_id,
+    street_names,
+    longmatch,
+    latmatch,
+    n
+  ) %>%
+  mutate(
+    lead_id = dplyr::lead(id),
+    lead_way_id = dplyr::lead(way_id),
+    lead_street_names = dplyr::lead(street_names),
+    use_id = if_else(lead_id != id,lead_id,id),
+    use_way_id = if_else(lead_way_id != way_id, lead_way_id, way_id),
+    use_street_names = if_else(lead_street_names != lead_street_names, lead_street_names, street_names)
+  ) %>%
+  st_as_sf(
+    .,
+    coords = c("longmatch", "latmatch"),
+    crs = 4326L, #WGS84
+    agr = "constant"
+  ) %>%
+  group_by(
+    use_id,
+    use_way_id,
+    use_street_names
+  ) %>%
+  summarize(
+    do_union=FALSE
+  ) %>%
+  st_cast("LINESTRING")
+```
+```{r}
+
+example_out <-
+  example_geom2 %>%
+  left_join(
+    rawnav_all2,
+    by = c(
+      "use_id" = "id",
+      "use_way_id" = "way_id",
+      "use_street_names" = "street_names"
+    )
+  ) %>%
+  mutate(speed_chng_out =
+           cut(
+             speed_chng,
+             breaks = c(-.2, -.1, 0, .1, .2, .3, .4, .5, .6, .7, .8, .9),
+             labels = c(
+               "-20% to -10%",
+               "-10% to 0%",
+               "0% to 10%",
+               "10% to 20%",
+               "20% to 30%",
+               "30% to 40%",
+               "40% to 50%",
+               "50% to 60%",
+               "60% to 70%",
+               "70% to 80%",
+               "80% or more"
+             ),
+             include.lowest = TRUE,
+             right = FALSE,
+             ordered = TRUE
+           )
+        )
+
+mapview(example_out, 
+        zcol = "speed_chng_out",
+        layer.name = "2017 to 2019<br>Percent Speed Change",
+        lwd = 4,
+        legend = FALSE)
+```
+
 
