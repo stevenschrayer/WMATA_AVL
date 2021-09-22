@@ -7,8 +7,11 @@ Created on Thu Sep 16 06:27:26 2021
 
 import json
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import pandas as pd
 import numpy as np
+
 
 def mapmatch(rawnav_ti):
     # refernece:
@@ -87,9 +90,69 @@ def mapmatch(rawnav_ti):
     headers = {'Content-type': 'application/json'}
     
     #### Run request
+    # NOTE: valhalla/meili didn't seem to like multiple retries on failed matching,
+    # so there's no code to do that. May be 
     r = requests.get(url, data=data, headers=headers)
     
+    if (r.status_code == 400):
+        # this is when matching fails but 
+        rjson = r.json()
+        # yes yes glue strings i know
+        print(
+            "Loki error " +
+            str(rjson['error_code']) + 
+            ": " + 
+            rjson['error'] +
+            " on " + 
+            rawnav_ti['filename'].iloc[0] + 
+            "-" +
+            str(rawnav_ti['index_run_start'].iloc[0])
+        )
+        # reference, look under loki
+        # https://github.com/valhalla/valhalla/blob/7e80a71c5034037746b02864e62899d1a4ce6292/docs/api/turn-by-turn/api-reference.md
+        # this is when map matching fails
+        # from some investigation, it can happen when there are only a few poitns 
+        # in a trip instance and they're in a weird spot
+        rawnav_return = (
+            rawnav_ti
+            .reset_index(drop = True)
+        )
+        
+        rawnav_return = (
+            rawnav_return
+            .reindex(
+                columns = 
+                    rawnav_return.columns.tolist() + 
+                    [
+                        "latmatch",                  
+                        "longmatch",                
+                        "edge_index",               
+                        "type",                     
+                        "distance_from_trace_point", 
+                        "distance_along_edge",      
+                        "id",                  
+                        "way_id",                   
+                        "begin_shape_index",         
+                        "end_shape_index",         
+                        "street_names",              
+                        "lane_count",               
+                        "speed",                    
+                        "speed_limit",  
+                        "begin_heading",             
+                        "end_heading",              
+                        "max_upward_grade",          
+                        "max_downward_grade",       
+                        "weighted_grade",            
+                        "length",                   
+                        "road_class"                
+                    ]
+            )
+        )
+        
+        return(rawnav_return)
+
     if (r.status_code != 200):
+        breakpoint() # if you get this, need to handle any remaining errors more thoughtfully above
         raise NameError("request failed")
     
     rjson = r.json()
@@ -128,15 +191,19 @@ def mapmatch(rawnav_ti):
             rjson['edges']   
         )
     )
-    
-    # need to flatten these names
-    rawnav_edges['street_names'] = (
-        rawnav_edges['names']  
-        .replace(np.nan,"")
-        .transform(
-            lambda x: ",".join(map(str,x))
+    if 'names' in rawnav_edges.columns:
+        # need to flatten these names
+        rawnav_edges['street_names'] = (
+            rawnav_edges['names']  
+            .replace(np.nan,"")
+            .transform(
+                lambda x: ",".join(map(str,x))
+            )
         )
-    )
+    else:
+        # TODO: maybe this should be NA instead of zero-length string? don't think it matters yet
+        # but should think about later
+        rawnav_edges['street_names'] = ""
     
     rawnav_edges = (
         rawnav_edges
