@@ -20,12 +20,17 @@ path_data <-
 
 rawnav <-
   read_csv(
-    file.path(path_data,"rawnav_matched.csv"),
-    n_max = 100000
+    file.path(path_data,"rawnav_matched.csv")
   ) 
 
 rawnav_matched <-
   rawnav %>%
+  select(
+    filename,
+    index_run_start,
+    index_loc,
+    latmatch:road_class,
+  ) %>%
   st_as_sf(
     .,
     coords = c("longmatch", "latmatch"),
