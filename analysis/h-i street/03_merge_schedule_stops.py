@@ -53,9 +53,26 @@ wmata_crs = 2248
 import wmatarawnav as wr
 
 # Read the Wmata_Schedule data
-wmata_schedule_dat = pd.read_csv(
+wmata_schedule_dat_all = pd.read_csv(
     os.path.join(path_processed_data, "schedule_data_allroutes_oct17_oct19.csv")
     )
+
+wmata_schedule_dat_hi = pd.read_csv(
+    os.path.join(path_processed_data, "schedule_data_H_I_buslanes.csv")
+    )
+
+wmata_schedule_dat = (
+    pd.concat(
+        [
+            wmata_schedule_dat_all,
+            wmata_schedule_dat_hi
+        ]
+    )
+    .drop_duplicates(
+        subset = ['PATTERN_ID','VERSIONID','STOP_ID','STOP_SEQUENCE','DIRECTION']    
+    )
+)
+    
 
 wmata_schedule_gdf = (
     gpd.GeoDataFrame(
@@ -73,7 +90,7 @@ wmata_schedule_versions = (
     )
 
 # Make Output Directory
-path_stop_index = os.path.join(path_processed_data, "stop_index_hi.parquet")
+path_stop_index = os.path.join(path_processed_data, "stop_index_matched_hi.parquet")
 
 if not os.path.isdir(path_stop_index):
     os.mkdir(path_stop_index)
@@ -81,6 +98,8 @@ if not os.path.isdir(path_stop_index):
 for analysis_route in analysis_routes:
     print("*" * 100)
     print('Processing analysis route {}'.format(analysis_route))
+    
+    stop_index = pd.DataFrame()
     
     for sched_version in wmata_schedule_versions['VERSIONID']:
         # Subset schedule data
@@ -93,7 +112,6 @@ for analysis_route in analysis_routes:
                  (wmata_schedule_gdf['ROUTE'] == analysis_route)]   
             .rename(columns = str.lower)
             )
-               
     
         rawnav_route = (
             pq.read_table(
@@ -118,7 +136,6 @@ for analysis_route in analysis_routes:
             )
             .to_crs(epsg=wmata_crs)
         )
-            
         # Find rawnav point nearest each stop
         nearest_rawnav_point_to_wmata_schedule_dat = (
             wr.merge_rawnav_target(
@@ -126,7 +143,7 @@ for analysis_route in analysis_routes:
                 rawnav_dat=rawnav_route_gdf)
         )
                 
-                 # Trialing resetting index as suggested by Benjamin Malnor
+        # Trialing resetting index as suggested by Benjamin Malnor
         # In general indices past the initial read-in don't matter much, so this seems like a safe
         # way of addressing the issue he hit
         nearest_rawnav_point_to_wmata_schedule_dat.reset_index(drop=True, inplace=True)
@@ -140,25 +157,32 @@ for analysis_route in analysis_routes:
             nearest_rawnav_point_to_wmata_schedule_dat['stop_sequence'] - 1
         )
     
-        stop_index = (
+        stop_index_temp = (
             wr.assert_clean_stop_order_increase_with_odom(nearest_rawnav_point_to_wmata_schedule_dat)
         )
         
-        # Write Index Table
-        shutil.rmtree(
-            os.path.join(
-                path_stop_index,
-                "route={}".format(analysis_route)
-            ),
-            ignore_errors=True
-        ) 
-        
-        stop_index = wr.drop_geometry(stop_index)
-                    
-        pq.write_to_dataset(
-            table = pa.Table.from_pandas(stop_index),
-            root_path = path_stop_index,
-            partition_cols = ['route']
-        )
+        # Append to outputs for this route
+        stop_index = stop_index.append(stop_index_temp)
+        if type(stop_index_temp) == type(None):
+            print('No data on analysis route {}'.format(analysis_route))
+        del stop_index_temp
 
-print("*" * 100)
+        
+    # Write Index Table
+    shutil.rmtree(
+        os.path.join(
+            path_stop_index,
+            "route={}".format(analysis_route)
+        ),
+        ignore_errors=True
+    ) 
+    
+    stop_index = wr.drop_geometry(stop_index)
+                
+    pq.write_to_dataset(
+        table = pa.Table.from_pandas(stop_index),
+        root_path = path_stop_index,
+        partition_cols = ['route']
+    )
+
+    print("*" * 100)
