@@ -46,6 +46,11 @@ def mapmatch(rawnav_ti):
         units = "miles",
         directions_type = "none"
     )
+    # borrowed from
+    # https://github.com/nick-caros/transit-map-matching/blob/main/valhalla_readme.md
+    use_trace_options_search_radius = 100
+    use_trace_options_interpolation_distance = 100
+    use_trace_options_turn_penalty_factor = 500
     
     # this seemed totally ignored, or else i got it wrong
     # still, we'lll leave in. I think in the version of meili that we're 
@@ -76,14 +81,17 @@ def mapmatch(rawnav_ti):
     #### Assemble request
     data = (
         json.dumps(
-            dict(
-                shape = use_shape.to_dict(orient = "records"),
-                costing = use_costing,
-                shape_match = use_shape_match,
+            {
+                "shape" : use_shape.to_dict(orient = "records"),
+                "costing" : use_costing,
+                "shape_match" : use_shape_match,
                 # see comment above, leaving in as placeholder for now.
-                # filters = use_filters,
-                directions_options = use_directions
-            )
+                # "filters" : use_filters,
+                "directions_options" : use_directions,
+                "trace_options.search_radius" : use_trace_options_search_radius,
+                "trace_options.interpolation_distance" : use_trace_options_interpolation_distance,
+                "trace_options.turn_penalty_factor" : use_trace_options_turn_penalty_factor
+            }
         )
     )
     url = "http://localhost:8002/trace_attributes"
@@ -95,7 +103,7 @@ def mapmatch(rawnav_ti):
     r = requests.get(url, data=data, headers=headers)
     
     if (r.status_code == 400):
-        # this is when matching fails but 
+        # this is when matching fails. 
         rjson = r.json()
         # yes yes glue strings i know
         print(
@@ -112,7 +120,7 @@ def mapmatch(rawnav_ti):
         # https://github.com/valhalla/valhalla/blob/7e80a71c5034037746b02864e62899d1a4ce6292/docs/api/turn-by-turn/api-reference.md
         # this is when map matching fails
         # from some investigation, it can happen when there are only a few poitns 
-        # in a trip instance and they're in a weird spot
+        # in a trip instance and they're in a weird spot. usually error 154, 123, or 444
         rawnav_return = (
             rawnav_ti
             .reset_index(drop = True)
