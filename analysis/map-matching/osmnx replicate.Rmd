@@ -212,6 +212,12 @@ match_segs_out <-
   reduce(bind_rows)
 ```
 
+```{r}
+match_segs_out %>%
+  filter(shape_id == "30N:02")
+```
+
+
 ### Aggregate
 
 Replicate teh final output from earlier code, aggregating to unique combinations of :
@@ -293,6 +299,13 @@ match30Nseg_osmnx <-
   summarize(do_union = FALSE, .groups = "drop") %>%
   st_cast("LINESTRING")
 ```
+
+```{r}
+match30Nseg_osmnx %>%
+  st_drop_geometry() %>%
+  head(20)
+```
+
 
 ```{r, fig.width = 8.5, fig.height = 7}
 match30Nseg_osmnx %>%

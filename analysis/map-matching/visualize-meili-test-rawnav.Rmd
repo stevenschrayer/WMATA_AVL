@@ -1,9 +1,13 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "Meili Map Matching Test"
+output: 
+  html_notebook:
+    toc: true
+    toc_float: true
+    toc_depth: 3
 ---
 
-```{r}
+```{r include=FALSE}
 library(tidyverse)
 library(sf)
 library(mapview)
@@ -74,13 +78,9 @@ rawnav_matched_ti <-
 
 ```
 
-```{r}
+## Compare before and matched for a single trip instance
 
-
-
-```
-
-
+### Original and matched
 ```{r}
 # compare
 mapview(
@@ -100,8 +100,9 @@ mapview(
 ```
 
 
+### Size of miss
 
-```{r}
+```{r, fig.width = 8.5, fig.height = 7}
 # look at size of miss
 mapview(
   rawnav_og_ti, 
@@ -118,15 +119,15 @@ mapview(
 
 ```
 
-
-```{r}
+### Street Names
+```{r, fig.width = 8.5, fig.height = 7}
 # edge index
 mapview(rawnav_matched_ti, zcol = "street_names", layer.name = "Street Names", alpha = 0)
 
 ```
 
-
-```{r}
+### OSM way ID
+```{r, fig.width = 8.5, fig.height = 7}
 
 rawnav_matched_ti %>%
   mutate(
@@ -136,31 +137,30 @@ rawnav_matched_ti %>%
 
 ```
 
-```{r}
+### distance along edge value
 
-# distance along edge value
-# The distance along the associated edge for this matched point. For example, if the matched point is halfway along the edge then the value would be 0.5. This value will not exist if this point was unmatched.
+The distance along the associated edge for this matched point. For example, if the matched point is halfway along the edge then the value would be 0.5. This value will not exist if this point was unmatched.
 
-# The distance along the associated edge for this matched point. For example, if the matched point is halfway along the edge then the value would be 0.5. This value will not exist if this point was unmatched.
+ The distance along the associated edge for this matched point. For example, if the matched point is halfway along the edge then the value would be 0.5. This value will not exist if this point was unmatched.
+```{r, fig.width = 8.5, fig.height = 7}
 
 mapview(rawnav_matched_ti, zcol = "distance_along_edge", layer.name = "Pct. Distance Along Edge", alpha = 0)
 
 ```
 
-```{r}
+### End heading
+
+```{r, fig.width = 8.5, fig.height = 7}
 mapview(rawnav_matched_ti, zcol = "end_heading", alpha = 0, layer.name = "Street Heading")
 
 ```
 
-```{r}
-rawnav_all <-
-  read_csv(
-    file.path(path_data,"rawnav_matched.csv")
-  ) 
-```
+## Aggregate across trips
+
+Aggregate speeds across 2017 and 2019 on these edges
 ```{r}
 rawnav_all2 <-
-  rawnav_all %>%
+  rawnav %>%
   filter(
     wday %in% c("Monday","Tuesday","Wednesday","Thursday","Friday"),
     pattern == 1 # i think is sb
@@ -171,6 +171,13 @@ rawnav_all2 <-
   ) %>%
   filter(
     hour %in% c(6,7,8)
+  ) %>%
+  replace_na(
+    list(
+      id = "",
+      way_id = "",
+      street_names =""
+    )
   ) %>%
   group_by(
     year,
@@ -196,10 +203,23 @@ rawnav_all2 <-
   )
 ```
 
+make a placeholder geom to join to until we reexport the valhalla edges
 ```{r}
+
+duper <- function(col){
+  if_else(dplyr::lead({{col}}) != {{col}},dplyr::lead({{col}}),{{col}})
+}
+
 example_geom2 <-
   rawnav_matched_ti %>%
   st_drop_geometry() %>%
+  replace_na(
+    list(
+      id = "",
+      way_id = "",
+      street_names =""
+    )
+  ) %>%
   group_by(
     id,
     way_id,
@@ -220,12 +240,17 @@ example_geom2 <-
     n
   ) %>%
   mutate(
-    lead_id = dplyr::lead(id),
-    lead_way_id = dplyr::lead(way_id),
-    lead_street_names = dplyr::lead(street_names),
-    use_id = if_else(lead_id != id,lead_id,id),
-    use_way_id = if_else(lead_way_id != way_id, lead_way_id, way_id),
-    use_street_names = if_else(lead_street_names != lead_street_names, lead_street_names, street_names)
+    across(
+      c(
+        id,
+        way_id,
+        street_names
+      ),
+      ~ duper(.x)
+    )
+  ) %>%
+  filter(
+    !is.na(id) & !is.na(way_id) & !is.na(street_names)
   ) %>%
   st_as_sf(
     .,
@@ -234,55 +259,34 @@ example_geom2 <-
     agr = "constant"
   ) %>%
   group_by(
-    use_id,
-    use_way_id,
-    use_street_names
+    id,
+    way_id,
+    street_names
   ) %>%
   summarize(
     do_union=FALSE
   ) %>%
   st_cast("LINESTRING")
 ```
-```{r}
+2017 v 2019 speed changes
+```{r, fig.width = 8.5, fig.height = 7}
 
 example_out <-
   example_geom2 %>%
   left_join(
     rawnav_all2,
     by = c(
-      "use_id" = "id",
-      "use_way_id" = "way_id",
-      "use_street_names" = "street_names"
+      "id" = "id",
+      "way_id" = "way_id",
+      "street_names" = "street_names"
     )
-  ) %>%
-  mutate(speed_chng_out =
-           cut(
-             speed_chng,
-             breaks = c(-.2, -.1, 0, .1, .2, .3, .4, .5, .6, .7, .8, .9),
-             labels = c(
-               "-20% to -10%",
-               "-10% to 0%",
-               "0% to 10%",
-               "10% to 20%",
-               "20% to 30%",
-               "30% to 40%",
-               "40% to 50%",
-               "50% to 60%",
-               "60% to 70%",
-               "70% to 80%",
-               "80% or more"
-             ),
-             include.lowest = TRUE,
-             right = FALSE,
-             ordered = TRUE
-           )
-        )
+  ) 
 
 mapview(example_out, 
-        zcol = "speed_chng_out",
+        zcol = "speed_chng",
         layer.name = "2017 to 2019<br>Percent Speed Change",
         lwd = 4,
-        legend = FALSE)
+        legend = TRUE)
 ```
 
 
