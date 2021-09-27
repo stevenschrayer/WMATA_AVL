@@ -19,17 +19,22 @@ from math import factorial
 
 #### interpolation functions
 # despite the name, this is called by interp_over_sec
-def interp_column(x, col_name, threshold = 1, fix_interp = True, interp_method = "index"):
+def interp_column(rawnav_ti, col_name, threshold = 1, fix_interp = True, interp_method = "index"):
     # threshold is how far outside the bands of observed values we would allow. a little
     # wiggle room probbaly okay given how we understand these integer issues appearing
-        
-    x.set_index(['sec_past_st'], inplace = True)
+    # breakpoint()
+    if ('sec_past_st' not in rawnav_ti.columns):
+        print('missing sec_past_st in columns')
+#        breakpoint()
     
-    if (x.index.duplicated().any()):
+    rawnav_ti.set_index(['sec_past_st'], inplace = True)
+    
+    if (rawnav_ti.index.duplicated().any()):
+        rawnav_ti.reset_index(inplace = True)
         raise ValueError("sec_past_st shouldn't be duplicated at this point")
     else:
         # interpolate
-        x[col_name] = x[col_name].interpolate(method = interp_method)
+        rawnav_ti[col_name] = rawnav_ti[col_name].interpolate(method = interp_method)
         
         # The _min and _max columns should already exist from calling agg_sec()
         assign_statement1 = {col_name+'_low' : lambda x, thr = threshold : ((x[col_name] < (x[col_name+'_min'] - thr))),
@@ -55,8 +60,8 @@ def interp_column(x, col_name, threshold = 1, fix_interp = True, interp_method =
         # test
         # Could probably fix some of this, but oh well
         if (fix_interp == True):
-            x = (
-                x
+            rawnav_ti = (
+                rawnav_ti
                 .assign(
                     **assign_statement1
                 )
@@ -67,8 +72,8 @@ def interp_column(x, col_name, threshold = 1, fix_interp = True, interp_method =
             )
         
         # this is a recalculation after fixes above
-        x = (
-            x
+        rawnav_ti = (
+            rawnav_ti
             .assign(
                 interp_fail = lambda x, thr = threshold : (
                     (x[col_name] < (x[col_name+'_min'] - thr)) |
@@ -78,8 +83,9 @@ def interp_column(x, col_name, threshold = 1, fix_interp = True, interp_method =
         )
         
         # output
-        x.reset_index(inplace = True)
-        return(x)
+        rawnav_ti.reset_index(inplace = True)
+
+        return(rawnav_ti)
 
 def agg_sec(rawnav):
     """
@@ -265,7 +271,7 @@ def interp_column_over_sec(rawnav, col_name, interp_method = "index"):
     # it's a bit sloppy. For now there are some known 'bad' values and it's a little
     # bit easier to just get rid of them and linearly interpolate since we're only looking
     # at a few cases.
-    
+
     # first, we look for ones that have one missing second afterwards but have one second before
     # for various reasons, these odometers tend to come out high
     rawnav['sec_past_st_next'] = (
@@ -312,11 +318,12 @@ def interp_column_over_sec(rawnav, col_name, interp_method = "index"):
             **assign_statement2
         )
     )
-        
+
     #### interpolate the heading values 
     rawnav = (
         rawnav
-        .groupby(['filename','index_run_start'])
+        .reset_index(drop=True) # getting weird indices out of order
+        .groupby(['filename','index_run_start'], sort = False)
         # TODO: we should also probably interpolate heading
         .apply(lambda x: interp_column(x, col_name, interp_method = interp_method))
         .reset_index(drop = True)
@@ -505,7 +512,6 @@ def savitzky_golay(y, window_size, order, deriv=0, rate=1):
     m = np.linalg.pinv(b).A[deriv] * rate**deriv * factorial(deriv)
     # pad the signal at the extremes with
     # values taken from the signal itself
-#    breakpoint()
     firstvals = y[0] - np.abs( y[1:half_window+1][::-1] - y[0] )
     lastvals = y[-1] + np.abs(y[-half_window-1:-1][::-1] - y[-1])
     y = np.concatenate((firstvals, y, lastvals))

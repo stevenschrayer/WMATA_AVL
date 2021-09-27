@@ -18,18 +18,32 @@ pio.renderers.default='browser'
 # %% Set paths
 
 # Paths
-os.environ["GDAL_DATA"] = os.environ["CONDA_PREFIX"] + "\Library\share\gdal"
-path_working = r"C:\OD\OneDrive - Foursquare ITP\Documents\0002 R\WMATA Datamart\WMATA_AVL"
-os.chdir(os.path.join(path_working))
-sys.path.append(r"C:\OD\OneDrive - Foursquare ITP\Documents\0002 R\WMATA Datamart\WMATA_AVL")
-path_sp = r"C:\OD\Foursquare ITP\Projects - WMATA Datamart\Task 3 - Bus Priority"
-path_source_data = os.path.join(path_sp,"data","00-Raw")
-path_processed_data = os.path.join(path_sp, "data","02-Processed")
+if os.getlogin() == "WylieTimmerman":
+    # Working Paths
+    path_working = r"C:\Users\WylieTimmerman\Documents\projects_local\WMATA_AVL_datamart"
+    os.chdir(os.path.join(path_working))
+    sys.path.append(r"C:\Users\WylieTimmerman\Documents\projects_local\WMATA_AVL_datamart")
+    path_sp = r"C:\OD\Foursquare ITP\Projects - WMATA Datamart\Task 3 - Bus Priority"
+    path_source_data = os.path.join(path_sp,"Data","00-Raw")
+    path_processed_data = os.path.join(path_sp, "Data", "02-Processed") 
+elif os.getlogin() == "JackMcDowell":
+    os.environ["GDAL_DATA"] = os.environ["CONDA_PREFIX"] + "\Library\share\gdal"
+    path_working = r"C:\OD\OneDrive - Foursquare ITP\Documents\0002 R\WMATA Datamart\WMATA_AVL"
+    os.chdir(os.path.join(path_working))
+    sys.path.append(r"C:\OD\OneDrive - Foursquare ITP\Documents\0002 R\WMATA Datamart\WMATA_AVL")
+    path_sp = r"C:\OD\Foursquare ITP\Projects - WMATA Datamart\Task 3 - Bus Priority"
+    path_source_data = os.path.join(path_sp,"data","00-Raw")
+    path_processed_data = os.path.join(path_sp, "data","02-Processed")
+else:
+    raise FileNotFoundError("Define the path_working, path_source_data, gtfs_dir, \
+                            ZippedFilesloc, and path_processed_data in a new elif block")
+
+
 # Server credentials
 config = dotenv_values(os.path.join(path_working, '.env'))
 
 # Globals
-q_jump_route_list = ['30N','30S','33','31']
+# q_jump_route_list = ['30N','30S','33','31']
 analysis_routes = ['30N']
 analysis_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 wmata_crs = 2248
@@ -44,9 +58,9 @@ rawnav_raw = pd.DataFrame()
 
 for yr in [
     '202102',
-    '202103',
-    '202104',
-    '202105'
+    # '202103',
+    # '202104',
+    # '202105'
 ]:
     rawnav_raw_temp = (
         wr.read_cleaned_rawnav(
@@ -216,6 +230,7 @@ rawnav_reset_heading['heading_new'] = (
     .cumsum()        
 )
 
+rawnav_reset_heading = rawnav_reset_heading[rawnav_reset_heading.index_run_start == 14528]
 
 # %% Prepare data for speed calculation
 
@@ -232,7 +247,9 @@ rawnav_heading2 = agg_sec(rawnav_heading)
 # aren't just the ones where we aggregated seconds. In general, we'll probably want to 
 # revisit the aggregation/interpolation process, so I'm going to try not to touch this too much
 # more for now.
-rawnav_heading3 = interp_column_over_sec(rawnav_heading2[rawnav_heading2.index_run_start == 14528], 'heading')
+# this works:
+rawnav_heading3 = interp_column_over_sec(rawnav_heading2, 'heading')
+
 
 # %% Plot sample data
     
@@ -256,10 +273,7 @@ heading_sample = (
 
 fig = px.scatter(x = heading_sample.odom_ft, 
                  y = heading_sample.heading,
-                 color = heading_sample.stop_zone_stop,
-                 labels = {"x": "Odometer (feet)",
-                           "y": "Heading (degrees)"},
-                 title = "Route 31 NB")
+                 color = heading_sample.stop_zone_stop)
 fig.show()
 
 
@@ -299,7 +313,6 @@ fig.show()
 
 # these are not the rolling vals, though i think we will want to include those before long.
 rawnav_heading4 = calc_rawnav_speed(rawnav_heading_sm, 'heading_sm')
-
 
 
 # %% Plot sample data
@@ -355,9 +368,7 @@ speed_sample_smooth = (
 
 fig = px.scatter(x = speed_sample_smooth.odom_ft, 
                  y = speed_sample_smooth.heading_sm_speed_next_sm,
-                 labels = {"x": "Odometer (feet)",
-                           "y": "Speed (deg/sec)"},
-                 title = "Route 31 NB")
+                 color = speed_sample_smooth.stop_zone_stop)
 fig.show()
 
 
@@ -461,6 +472,7 @@ heading_class['heading_decomp'] = (
         .fillna(value = "straight")
     )
 
+# %% Visualize
 
 # Color speed diagram
 fig = px.scatter(x = heading_class.sec_past_st, 
@@ -469,50 +481,78 @@ fig = px.scatter(x = heading_class.sec_past_st,
 fig.show()
 
 # Color heading diagram
-fig = px.scatter(x = heading_class.odom_ft, 
+fig = px.scatter(x = heading_class.sec_past_st, 
                  y = heading_class.heading_sm,
-                 color = heading_class.heading_decomp,
-                 labels = {"x": "Odometer (feet)",
-                           "y": "Heading (degrees)",
-                           "color": "Turn Type"},
-                 title = "Route 31 NB")
+                 color = heading_class.heading_decomp)
 fig.show()
 
 # Color lat/long map
 fig = px.scatter(x = heading_class.long, 
                  y = heading_class.lat,
-                 color = heading_class.heading_decomp,
-                 labels = {"x": "Longitude",
-                           "y": "Latitude",
-                           "color": "Turn Type"},
-                 title = "Route 31 NB")
+                 color = heading_class.heading_decomp)
 fig.show()
     
 # Pull into stop
-# - should always be positive speed, since the bus is turning right
-# - maybe followed by negative speed to straighten out
+# - Positive change in heading (right turn)
+# - Touches a stop zone
+# - Occurs before the stop itself (door open)
 
 # Pull out of stop
-# - should always be negative speed, usually followed by positive speed to straighten out
+# - Negative change in heading (left turn)
+# - Touches a stop zone
+# - Occurs after the stop itself (door open)
 
 # Change lanes
 # - positive speed followed by negative speed, or vice versa
+# - net zero heading change after the two movements
 
 # Turn at intersection
 # - Positive speed is always right, negative speed is always left
+# - sharpness (degrees/distance) is higher
 
 
 # Drive straight
 # - select a threshold that is considered near-zero speed
 # - however, curves in the road should be considered driving "straight"
+# - sharpness (degrees/distance) is lower
 
 
 # At stop (door open?)
 
 
+# %% Next round of heading decomp
+
+# Measure the total heading change of each turn
+heading_class_groups = (
+    heading_class
+    .assign(ang_speed = lambda x: abs(x.heading_sm_speed_next_sm))
+    .groupby(['filename','index_run_start','route_pattern','pattern','route',
+              'heading_chg_dir','heading_decomp'])
+    .agg(heading_start = ('heading_sm','first'),
+         heading_end = ('heading_sm','last'),
+         odom_start = ('odom_ft','first'),
+         odom_end = ('odom_ft','last'),
+         sec_start = ('sec_past_st','first'),
+         sec_end = ('sec_past_st','last'),
+         ang_speed_max = ('ang_speed','max'))
+    .reset_index()
+    .assign(heading_chg_deg = lambda x: x.heading_end - x.heading_start,
+            turn_dist_ft = lambda x: x.odom_end - x.odom_start,
+            turn_dur_sec = lambda x: x.sec_end - x.sec_start,
+            ang_speed_avg = lambda x: abs(x.heading_chg_deg) / x.turn_dur_sec,
+            turn_sharpness = lambda x: abs(x.heading_chg_deg) / x.turn_dist_ft)
+)
 
 
 
+# %% Start assigning labels
+
+# Lag heading groups
+heading_class_groups[['heading_chg_deg_lag']] = (
+    heading_class_groups
+    .groupby(['filename','index_run_start'], sort = False)[['heading_chg_deg']]
+    .transform(lambda x: x.shift(1))
+)
 
 
 
