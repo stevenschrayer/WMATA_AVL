@@ -68,11 +68,37 @@ wmata_schedule_dat = (
             wmata_schedule_dat_hi
         ]
     )
+    # kind of a cheeky way to address the issues above.
     .drop_duplicates(
         subset = ['PATTERN_ID','VERSIONID','STOP_ID','STOP_SEQUENCE','DIRECTION']    
     )
 )
-    
+
+# we can still run into cases where the same stop is repeated twice in the stop sequence order.
+# this can cause some havoc in the matching process, so we filter these out early.
+# a little worried that this renders us incompatible with other WMATA data sources, so maybe
+# should think on this more.
+wmata_schedule_dat['NEXT_STOP_ID'] = (
+    wmata_schedule_dat
+    .groupby(['VERSIONID','PATTERN_ID','DIRECTION'])['STOP_ID']
+    .shift(-1)
+)
+
+wmata_schedule_dat = (
+    wmata_schedule_dat
+    .loc[(wmata_schedule_dat.STOP_ID != wmata_schedule_dat.NEXT_STOP_ID)]
+)
+
+wmata_schedule_dat['STOP_SEQUENCE'] = (
+    wmata_schedule_dat
+    .groupby(['VERSIONID','PATTERN_ID','DIRECTION'])
+    .cumcount() + 1
+)
+
+wmata_schedule_dat = (
+    wmata_schedule_dat
+    .drop(['NEXT_STOP_ID'], axis = "columns")
+)    
 
 wmata_schedule_gdf = (
     gpd.GeoDataFrame(
@@ -125,6 +151,14 @@ for analysis_route in analysis_routes:
                 route = lambda x: x.route.astype(str),
                 pattern = lambda x: x.pattern.astype('int32', errors = "ignore")
             )
+        )
+        
+        rawnav_route = (
+            rawnav_route
+            .loc[
+                (rawnav_route['start_date_time'] > sched_start_date) & 
+                (rawnav_route['start_date_time'] < sched_end_date)
+            ]
         )
         
         rawnav_route_gdf = (
