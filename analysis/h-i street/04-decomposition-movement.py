@@ -150,12 +150,13 @@ for analysis_route in analysis_routes:
         .groupby(['filename','index_run_start'])
         # reset odometer to be zero at second stop in order in the pattern
         # note that if you don't have a second stop, you just get ditched.
+        # picking one a little ways into trip, since even first or second stop may be missing
         # TODO: may revisit this in light of the fact that we now mapmatch
-        .apply(lambda x: wr.reset_odom(x, indicator_val = 2, indicator_var = 'stop_sequence_loc'))
+        .apply(lambda x: wr.reset_odom(x, indicator_val = 6, indicator_var = 'stop_sequence_loc'))
         .reset_index(drop = True)
     )
     
-    # TODO: maybe add some reasonableness checks here
+    # TODO: maybe add some reasonableness checks here. 
     
     ##### Export Data
     print('export')
