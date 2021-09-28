@@ -396,6 +396,30 @@ def create_stop_segs(
     
     return(rawnav)
 
+
+def trim_ends(
+        rawnav_ti
+    ):
+    
+    first_idx = (
+        rawnav_ti
+        .loc[rawnav_ti.stop_id_group_ext.notna() | rawnav_ti.stop_id_loc.notna()]
+        .first_valid_index()
+    )
+    
+    last_idx = (
+        rawnav_ti
+        .loc[rawnav_ti.stop_id_group_ext.notna() | rawnav_ti.stop_id_loc.notna()]
+        .last_valid_index()
+    ) + 1
+    
+    rawnav_ti = (
+        rawnav_ti
+        .iloc[first_idx:last_idx]    
+    )    
+    
+    return(rawnav_ti)
+
 #### Decomposition
 def decompose_mov(
     rawnav,

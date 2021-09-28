@@ -130,7 +130,19 @@ for analysis_route in analysis_routes:
     # this also associates accel/decel with a stop, so we probably need to fix that too
     print('create stop segs')
     rawnav_route = wr.create_stop_segs(rawnav_route)
-    
+
+    print('trim ends')
+    rawnav_route = (
+        rawnav_route
+        .groupby(['filename','index_run_start'])
+        # reset odometer to be zero at second stop in order in the pattern
+        # note that if you don't have a second stop, you just get ditched.
+        # picking one a little ways into trip, since even first or second stop may be missing
+        # TODO: may revisit this in light of the fact that we now mapmatch
+        .apply(lambda x: wr.trim_ends(x))
+        .reset_index(drop = True)
+    )
+        
     # Reset odometer
     print('reset odom')
     rawnav_route = (
