@@ -68,7 +68,6 @@ def match_stops(
     # TODO: somehow this isn't joining quite right on index_loc, and i'm not
     # sure why. Will need to revist processing code, but for now, may not rely on
     # stop_id_loc much
-
     rawnav = (
         rawnav
         .merge(
@@ -850,64 +849,45 @@ def agg_sec(rawnav):
     rawnav_nodupe = (
         rawnav.loc[rawnav.dupes == False]
     )
-    # Even though we could try to pull out only the ones that have repeated values and perform
-    # the agg on them, seems a little safer as we get going to do for all and then optimize
-    # later.
+
+    # because the number/names of columns that come into this function are somewhat variable,
+    # we will specify lists of columns to join together, but will otherwise just take the last()
+    # observation of the remaining ones
     rawnav_dupe = (
         rawnav
         .loc[rawnav.dupes == True]
         # trick here is i'm not sure what columns we'll keep
-        .groupby(
-            [
-                # these are the parts that don't vary by instance
-                # not sure if it's slower to do the big group or to
-                # just grab 'first' for each of these.
-                'filename',
-                'index_run_start',
-                # this is the one that we actually care about
-                'sec_past_st'
-            ],
-            as_index = False
-        )
+    )
+     
+    # these are ones we don't want to have aggregated with 'last' later. We otherwise don't
+    # use this list
+    cols_custom = [
+        'stop_window_e',
+        'stop_window_x',
+        'blank',
+        'row_before_apc',
+        'collapsed_rows'
+    ]    
+    
+    # including sec_past_st because we're collapsing on that
+    cols_idx = ['filename','index_run_start','sec_past_st']
+    
+    cols_last = [col for col in rawnav_dupe.columns if col not in (cols_custom + cols_idx)]
+    
+    rawnav_dupe_custom = (
+        rawnav_dupe
+        .groupby(cols_idx)
         .agg(
-            # some of these are just to avoid a bigger groupby call
-            route_pattern = ('route_pattern',"first"),
-            pattern = ('pattern',"first"),
-            index_run_end = ('index_run_end',"first"),
-            route = ('route',"first"),
-            wday = ('wday',"first"),
-            start_date_time = ('start_date_time',"first"),
-            # in this sense, we're starting to lose data and have to make judgment calls
-            index_loc = ('index_loc','max'),
-            lat = ('lat','last'),
-            long = ('long','last'),
-            heading = ('heading','last'),
-            # i'm hoping it's never the case that door changes on the same second
-            # if it does, will be in a world of pain.
-            # this join works better when we expect every row to be filled
-            veh_state = ('veh_state', lambda x: ','.join(x.unique().astype(str))),
-            # we'll impute this later, but for now, we just fill
-            odom_ft = ('odom_ft','last'),
-            odom_ft_min = ('odom_ft','min'),
-            odom_ft_max = ('odom_ft','max'),
-            sat_cnt = ('sat_cnt','last'),
-            # TODO: taking the last might hide a door open that lasts <1 second, but that seems
-            # unlikly and we aren't likely to care.
-            door_state = ('door_state', 'last'),
-            door_state_all = ('door_state', lambda x: ','.join(x.unique().astype(str))),
-            # for stop_window, we are more likely to have blanks, so this works
-            # we also are likely to run into instances where the stop window close tags 
-            # show up in the same second as the stop window, so this just sorts them into a separate
-            # column
             stop_window_e = ('stop_window_e', lambda x: x.str.cat(sep=",",na_rep = None)),
             stop_window_x = ('stop_window_x', lambda x: x.str.cat(sep=",",na_rep = None)),
             blank = ('blank', lambda x: ','.join(x.unique().astype(int).astype(str))),
-            lat_raw = ('lat_raw','last'),
-            long_raw = ('long_raw','last'),
-            # TODO: possible we don't want to collapse this...
             row_before_apc = ('row_before_apc', lambda x: ','.join(x.unique().astype(int).astype(str))),
-            collapsed_rows = ('index_loc','count')
+            collapsed_rows = ('index_loc','count'),
+            odom_ft_min = ('odom_ft','min'),
+            odom_ft_max = ('odom_ft','max'),
+            veh_state_all = ('veh_state', lambda x: ','.join(x.unique().astype(str)))
         )
+        # this seems to work more consistently than replace()
         .assign(
             stop_window_e = lambda x: 
                 np.where(
@@ -923,11 +903,29 @@ def agg_sec(rawnav):
                 )
         )
     )
+    
+    rawnav_dupe_last = (
+        rawnav_dupe
+        [cols_last + ['filename','index_run_start','sec_past_st']]
+        .groupby(cols_idx)
+        .last()
+    )
+    
+    rawnav_dupe_out = (
+        rawnav_dupe_custom
+        .merge(
+            rawnav_dupe_last,
+            how = "outer",
+            left_index = True,
+            right_index = True
+        )
+        .reset_index()
+    )    
             
     # recombine duplicated and non-duplicated
     rawnav = (
         pd.concat([
-            rawnav_dupe,
+            rawnav_dupe_out,
             rawnav_nodupe
         ])
         .sort_values(
@@ -973,7 +971,6 @@ def agg_sec(rawnav):
              'collapsed_rows',
              'odom_ft_min',
              'odom_ft_max',
-             'door_state_all',
              'stop_window_e',
              'stop_window_x',
              'row_before_apc'

@@ -37,7 +37,7 @@ wmata_crs = 2248
 import wmatarawnav as wr
 
 # Make Output Directory
-path_decomp = os.path.join(path_processed_data, "decomp_hi.parquet")
+path_decomp = os.path.join(path_processed_data, "decomp_match_hi.parquet")
 
 if not os.path.isdir(path_decomp):
     os.mkdir(path_decomp)
@@ -47,7 +47,7 @@ for analysis_route in analysis_routes:
     #### Reload the data
     rawnav_route = (
         pq.read_table(
-            source = os.path.join(path_processed_data,"rawnav_data_hi.parquet"),
+            source = os.path.join(path_processed_data,"rawnav_matched_hi.parquet"),
             filters = [('route', '=', analysis_route)],
             use_pandas_metadata = True
         )
@@ -63,7 +63,7 @@ for analysis_route in analysis_routes:
     # Load the stop data
     stop_index = (
         pq.read_table(
-            source=os.path.join(path_processed_data,"stop_index_hi.parquet"),
+            source=os.path.join(path_processed_data,"stop_index_matched_hi.parquet"),
             filters = [('route', '=', analysis_route)],
             columns = [
                 'route',
@@ -89,8 +89,7 @@ for analysis_route in analysis_routes:
         .reset_index()
     )
 
-    #### Start decomposition
-    
+    #### Start decomposition    
     # aggregate so we only have one observation for each second
     print('agg')
     rawnav_route = wr.agg_sec(rawnav_route)
@@ -139,9 +138,12 @@ for analysis_route in analysis_routes:
         .groupby(['filename','index_run_start'])
         # reset odometer to be zero at second stop in order in the pattern
         # note that if you don't have a second stop, you just get ditched.
+        # TODO: may revisit this in light of the fact that we now mapmatch
         .apply(lambda x: wr.reset_odom(x, indicator_val = 2, indicator_var = 'stop_sequence_loc'))
         .reset_index(drop = True)
     )
+    
+    # TODO: maybe add some reasonableness checks here
     
     ##### Export Data
     print('export')
@@ -153,14 +155,14 @@ for analysis_route in analysis_routes:
         ),
         ignore_errors=True
     ) 
-                
+
     pq.write_to_dataset(
         table = (
             pa.Table.from_pandas(
                 rawnav_route,
                 # this may be unnecessary--found a few issues at end where arrow would
                 # try to convert objects to other types if i didn't explicitly cast
-                schema = wr.rawnav_decomp_schema()
+                schema = pa.Schema.from_pandas(rawnav_route)
             )
         ),
         root_path = path_decomp,
