@@ -558,24 +558,11 @@ heading_class2 = (
               'heading_chg_dir','heading_decomp'])
 )
 
-## Color speed diagram
-#fig = px.scatter(x = heading_class2.sec_past_st, 
-#                 y = heading_class2.heading_sm_speed_next_sm,
-#                 color = heading_class2.heading_decomp)
-#fig.show()
-#
-## Color heading diagram
-#fig = px.scatter(x = heading_class2.sec_past_st, 
-#                 y = heading_class2.heading_sm,
-#                 color = heading_class2.heading_decomp)
-#fig.show()
-
 # Color lat/long map
 fig = px.scatter(x = heading_class2.long, 
                  y = heading_class2.lat,
                  color = heading_class2.heading_chg_deg)
 fig.show()
-
 
 
 # %% Start assigning labels
@@ -587,9 +574,9 @@ heading_class_groups[['heading_chg_deg_lag']] = (
     .transform(lambda x: x.shift(1))
 )
 
-heading_class_groups[['heading_decomp_lag']] = (
+heading_class_groups[['ang_speed_max_lag']] = (
     heading_class_groups
-    .groupby(['filename','index_run_start'], sort = False)[['heading_decomp']]
+    .groupby(['filename','index_run_start'], sort = False)[['ang_speed_max']]
     .transform(lambda x: x.shift(1))
 )
 
@@ -598,26 +585,78 @@ heading_class_groups2 = (
     heading_class_groups
     .assign(actual_turn = lambda x: (abs(x.heading_chg_deg) >= 22.5) & 
                                     (x.ang_speed_max >= 1) & 
-                                    (x.turn_sharpness >= 0.05),
-            lane_change = lambda x: (x.heading_decomp != "straight") & 
-                                    (x.heading_decomp_lag != "straight") &
-                                    (abs(x.heading_chg_deg + x.heading_chg_deg_lag) <= 2))
+                                    (x.turn_sharpness >= 0.05),                
+            lane_change = lambda x: (x.ang_speed_max >= 0.5) & 
+                                    (x.ang_speed_max_lag >= 0.5) &
+                                    (abs(x.heading_chg_deg + x.heading_chg_deg_lag) <= 2),
+            lane_change_dir = lambda x: np.select(
+                    # Use the lagged heading change value since the first turn
+                    # of the lane change has the direction of the lane change
+                    [x.lane_change & (x.heading_chg_deg_lag > 0),
+                     x.lane_change & (x.heading_chg_deg_lag < 0)],
+                    ["lanechg_right",
+                     "lanechg_left"],
+                     default = "no_lanechg"),
+            slight_angle = lambda x: (x.ang_speed_max_lag >= 0.75) &
+                                     (x.actual_turn != True) &
+                                     (x.lane_change != True))
 )
     
 # Lead lane_change values
-heading_class_groups2[['lane_change_lead']] = (
+heading_class_groups2[['lane_change_dir_lead']] = (
     heading_class_groups2
-    .groupby(['filename','index_run_start'], sort = False)[['lane_change']]
+    .groupby(['filename','index_run_start'], sort = False)[['lane_change_dir']]
     .transform(lambda x: x.shift(-1))
 )
 
 # Collapse lane_change values
 heading_class_groups2 = (
     heading_class_groups2
-    .assign(lane_change = lambda x: x.lane_change | x.lane_change_lead)
-    .drop(['lane_change_lead'],
+    .assign(lane_change_new = lambda x: np.select(
+                [(x.lane_change_dir != "no_lanechg") & 
+                     (x.lane_change_dir_lead == "no_lanechg"),
+                 (x.lane_change_dir == "no_lanechg") & 
+                     (x.lane_change_dir_lead != "no_lanechg"),
+                 (x.lane_change_dir != "no_lanechg") & 
+                     (x.lane_change_dir_lead != "no_lanechg"),
+                 # The last value in a trip instance will have NA for the lead 
+                 # value, we need to make sure this is marked correctly.
+                 # Unfortunately this does not work... no idea why
+                 pd.isna(x.lane_change_dir_lead)],
+                [x.lane_change_dir,
+                 x.lane_change_dir_lead,
+                 # If both values have a lane change, use the first one
+                 x.lane_change_dir,
+                 # NA case
+                 x.lane_change_dir],
+                 default = "no_lanechg"))
+    .drop(['lane_change_dir_lead'],
           axis = "columns")
+    )
+
+# Fill NA that appears in the final row for each trip instance
+heading_class_groups2['lane_change_new'] = (
+    heading_class_groups2['lane_change_new']
+    .fillna(value = heading_class_groups2.to_dict()['lane_change_dir'])
 )
+
+# Combine turning labels into one column
+heading_class_groups2 = (
+    heading_class_groups2
+    .assign(combined = lambda x: np.select(
+                [x.actual_turn & (x.heading_chg_deg > 0),
+                 x.actual_turn & (x.heading_chg_deg < 0),
+                 x.lane_change_new != "no_lanechg",
+                 x.slight_angle & (x.heading_chg_deg > 0),
+                 x.slight_angle & (x.heading_chg_deg < 0)],
+                ["turn_right",
+                 "turn_left",
+                 x.lane_change_new,
+                 "angle_right",
+                 "angle_left"],
+                 default = "straight"))
+)
+
 
 # %% Join back to data and visualize
 
@@ -629,25 +668,17 @@ heading_class3 = (
               'heading_chg_dir','heading_decomp'])
 )
 
-## Color speed diagram
-#fig = px.scatter(x = heading_class3.sec_past_st, 
-#                 y = heading_class3.heading_sm_speed_next_sm,
-#                 color = heading_class3.heading_decomp)
-#fig.show()
-#
-## Color heading diagram
-#fig = px.scatter(x = heading_class3.sec_past_st, 
-#                 y = heading_class3.heading_sm,
-#                 color = heading_class3.heading_decomp)
-#fig.show()
-
 # Color lat/long map
 fig = px.scatter(x = heading_class3.long, 
                  y = heading_class3.lat,
-                 color = heading_class3.lane_change)
+                 color = heading_class3.combined)
 fig.show()
 
-
+## Color lat/long map
+#fig = px.scatter(x = heading_class3.long, 
+#                 y = heading_class3.lat,
+#                 color = heading_class3.actual_turn)
+#fig.show()
 
 
 
