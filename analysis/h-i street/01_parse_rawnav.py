@@ -32,12 +32,11 @@ else:
 import wmatarawnav as wr
 analysis_routes = ['30N','30S','32','33','36','37','39','42','43','G8']
 # later = ['37','39','42','43','G8']
-# analysis_routes = ['G8']
 
 #### Load Raw RawNav data
 # reload inventory
 rawnav_inventory = (
-    pd.read_parquet(path=os.path.join(path_processed_data,"rawnav_inventory_mult_repart.parquet"))
+    pd.read_parquet(path=os.path.join(path_processed_data,"rawnav_inventory_mult.parquet"))
     .assign(
         #returned as categorical
         filename = lambda x: x.filename.astype(str),
@@ -55,7 +54,7 @@ rawnav_inventory_filtered = (
 # for debug on G8
 # rawnav_inventory_filtered = (
 #     rawnav_inventory_filtered
-#     .loc[rawnav_inventory_filtered.file_id.isin(['02143171014','02172171020','02212171018'])]    
+#     .loc[rawnav_inventory_filtered.file_id.isin(['04464191025'])]    
 # )
 
 if len(rawnav_inventory_filtered) == 0:

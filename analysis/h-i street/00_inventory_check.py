@@ -48,8 +48,8 @@ path_rawnav_inventory = os.path.join(path_processed_data,"rawnav_inventory_mult.
 shutil.rmtree(path_rawnav_inventory, ignore_errors=True) 
 os.mkdir(path_rawnav_inventory)
     
-# Note: partitioning required, using filename avoids resorting of values, filename column
-# will be sorted to end on reload however.
+# Note: partitioning required, using filename prevents resorting of values, filename column
+# will be sorted to end on reload however, this is also a bit slow
 rawnav_inventory.to_parquet(
     path = path_rawnav_inventory,
     partition_cols = ['filename'],

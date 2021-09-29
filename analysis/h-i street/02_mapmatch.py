@@ -63,7 +63,6 @@ for analysis_route in analysis_routes:
  
     rawnav_route_matched = (
         rawnav_route
-        # .query('(filename == "rawnav07132171006.txt") & (index_run_start == 127)')
         .groupby(['filename','index_run_start'])
         .apply(lambda x: wr.mapmatch(x))  
         .reset_index(drop = True)
