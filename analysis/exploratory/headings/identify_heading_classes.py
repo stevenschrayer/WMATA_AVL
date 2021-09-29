@@ -443,8 +443,8 @@ heading_class = (
     .assign(
         heading_decomp = lambda x: 
             np.select(
-                [x.heading_sm_speed_next_sm >= 0.8,
-                 x.heading_sm_speed_next_sm <= -0.8],
+                [x.heading_sm_speed_next_sm >= 0.5,
+                 x.heading_sm_speed_next_sm <= -0.5],
                 ["right_turn",
                  "left_turn"],
                  default = pd.NA
@@ -509,6 +509,9 @@ fig.show()
 # Turn at intersection
 # - Positive speed is always right, negative speed is always left
 # - sharpness (degrees/distance) is higher
+# - Speed >= 1
+# - Sharpness >= 0.05
+# - Total Angle >= 15
 
 
 # Drive straight
@@ -541,7 +544,37 @@ heading_class_groups = (
             turn_dur_sec = lambda x: x.sec_end - x.sec_start,
             ang_speed_avg = lambda x: abs(x.heading_chg_deg) / x.turn_dur_sec,
             turn_sharpness = lambda x: abs(x.heading_chg_deg) / x.turn_dist_ft)
+    .drop(['heading_start','heading_end','odom_start','odom_end','sec_start','sec_end'],
+          axis = "columns")
 )
+
+# %% Join back to data and visualize
+    
+heading_class2 = (
+    heading_class_groups
+    .merge(heading_class,
+           how = 'left',
+           on = ['filename','index_run_start','route_pattern','pattern','route',
+              'heading_chg_dir','heading_decomp'])
+)
+
+## Color speed diagram
+#fig = px.scatter(x = heading_class2.sec_past_st, 
+#                 y = heading_class2.heading_sm_speed_next_sm,
+#                 color = heading_class2.heading_decomp)
+#fig.show()
+#
+## Color heading diagram
+#fig = px.scatter(x = heading_class2.sec_past_st, 
+#                 y = heading_class2.heading_sm,
+#                 color = heading_class2.heading_decomp)
+#fig.show()
+
+# Color lat/long map
+fig = px.scatter(x = heading_class2.long, 
+                 y = heading_class2.lat,
+                 color = heading_class2.heading_chg_deg)
+fig.show()
 
 
 
@@ -554,8 +587,65 @@ heading_class_groups[['heading_chg_deg_lag']] = (
     .transform(lambda x: x.shift(1))
 )
 
+heading_class_groups[['heading_decomp_lag']] = (
+    heading_class_groups
+    .groupby(['filename','index_run_start'], sort = False)[['heading_decomp']]
+    .transform(lambda x: x.shift(1))
+)
 
+# %% Assign labels
+heading_class_groups2 = (
+    heading_class_groups
+    .assign(actual_turn = lambda x: (abs(x.heading_chg_deg) >= 22.5) & 
+                                    (x.ang_speed_max >= 1) & 
+                                    (x.turn_sharpness >= 0.05),
+            lane_change = lambda x: (x.heading_decomp != "straight") & 
+                                    (x.heading_decomp_lag != "straight") &
+                                    (abs(x.heading_chg_deg + x.heading_chg_deg_lag) <= 2))
+)
+    
+# Lead lane_change values
+heading_class_groups2[['lane_change_lead']] = (
+    heading_class_groups2
+    .groupby(['filename','index_run_start'], sort = False)[['lane_change']]
+    .transform(lambda x: x.shift(-1))
+)
 
+# Collapse lane_change values
+heading_class_groups2 = (
+    heading_class_groups2
+    .assign(lane_change = lambda x: x.lane_change | x.lane_change_lead)
+    .drop(['lane_change_lead'],
+          axis = "columns")
+)
+
+# %% Join back to data and visualize
+
+heading_class3 = (
+    heading_class_groups2
+    .merge(heading_class,
+           how = 'left',
+           on = ['filename','index_run_start','route_pattern','pattern','route',
+              'heading_chg_dir','heading_decomp'])
+)
+
+## Color speed diagram
+#fig = px.scatter(x = heading_class3.sec_past_st, 
+#                 y = heading_class3.heading_sm_speed_next_sm,
+#                 color = heading_class3.heading_decomp)
+#fig.show()
+#
+## Color heading diagram
+#fig = px.scatter(x = heading_class3.sec_past_st, 
+#                 y = heading_class3.heading_sm,
+#                 color = heading_class3.heading_decomp)
+#fig.show()
+
+# Color lat/long map
+fig = px.scatter(x = heading_class3.long, 
+                 y = heading_class3.lat,
+                 color = heading_class3.lane_change)
+fig.show()
 
 
 
