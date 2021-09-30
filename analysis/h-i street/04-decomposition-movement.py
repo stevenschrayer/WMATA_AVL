@@ -125,6 +125,7 @@ for analysis_route in analysis_routes:
     print('match stops')
     # NOTE: this can drop trips entirely in some cases if there are no matched 
     # stops. There are other todos in the code to clean this up later.
+    # THIS IS NO BUENO
     rawnav_route = wr.match_stops(rawnav_route, stop_index)
     
     # this also associates accel/decel with a stop, so we probably need to fix that too
@@ -135,26 +136,24 @@ for analysis_route in analysis_routes:
     rawnav_route = (
         rawnav_route
         .groupby(['filename','index_run_start'])
-        # reset odometer to be zero at second stop in order in the pattern
-        # note that if you don't have a second stop, you just get ditched.
-        # picking one a little ways into trip, since even first or second stop may be missing
-        # TODO: may revisit this in light of the fact that we now mapmatch
         .apply(lambda x: wr.trim_ends(x))
         .reset_index(drop = True)
     )
         
     # Reset odometer
     print('reset odom')
-    rawnav_route = (
-        rawnav_route
-        .groupby(['filename','index_run_start'])
-        # reset odometer to be zero at second stop in order in the pattern
-        # note that if you don't have a second stop, you just get ditched.
-        # picking one a little ways into trip, since even first or second stop may be missing
-        # TODO: may revisit this in light of the fact that we now mapmatch
-        .apply(lambda x: wr.reset_odom(x, indicator_val = 6, indicator_var = 'stop_sequence_loc'))
-        .reset_index(drop = True)
-    )
+    # for now, i'm ditching this until we can think about what htis means in 
+    # light of map matching
+    # rawnav_route = (
+    #     rawnav_route
+    #     .groupby(['filename','index_run_start'])
+    #     # reset odometer to be zero at second stop in order in the pattern
+    #     # note that if you don't have a second stop, you just get ditched.
+    #     # picking one a little ways into trip, since even first or second stop may be missing
+    #     # TODO: may revisit this in light of the fact that we now mapmatch
+    #     .apply(lambda x: wr.reset_odom(x, indicator_val = 6, indicator_var = 'stop_sequence_loc'))
+    #     .reset_index(drop = True)
+    # )
     
     # TODO: maybe add some reasonableness checks here. 
     
