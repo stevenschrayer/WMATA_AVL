@@ -13,7 +13,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import shutil
 import os, sys, pandas as pd, geopandas as gpd
-
+import numpy as np
 # For postgresql
 from dotenv import dotenv_values
 
@@ -109,12 +109,26 @@ wmata_schedule_gdf = (
     .to_crs(epsg=wmata_crs)
 )
 
+# updates to start date are because the intervals are overlapping, this is a little hack to
+# Set them straight
 wmata_schedule_versions = (
     wmata_schedule_dat
     .filter(['VERSIONID','VERSIONNAME','VERSION_START_DATE','VERSION_END_DATE'])
     .drop_duplicates()
+    .assign(
+        VERSION_START_DATE = lambda x: 
+            pd.to_datetime(x.VERSION_START_DATE),
+        VERSION_END_DATE = lambda x: pd.to_datetime(x.VERSION_END_DATE)
     )
-
+    .assign(
+        VERSION_START_DATE = lambda x:
+            np.where(
+                x.VERSIONID == 70,
+                x.VERSION_START_DATE + pd.Timedelta(hours = 4, seconds = 2),
+                x.VERSION_START_DATE 
+            )
+    )
+)
 # Make Output Directory
 path_stop_index = os.path.join(path_processed_data, "stop_index_matched_hi.parquet")
 
@@ -156,11 +170,11 @@ for analysis_route in analysis_routes:
         rawnav_route = (
             rawnav_route
             .loc[
-                (rawnav_route['start_date_time'] > sched_start_date) & 
+                (rawnav_route['start_date_time'] >= sched_start_date) & 
                 (rawnav_route['start_date_time'] < sched_end_date)
             ]
         )
-        
+
         rawnav_route_gdf = (
             gpd.GeoDataFrame(
                 rawnav_route, 
@@ -193,6 +207,7 @@ for analysis_route in analysis_routes:
     
         stop_index_temp = (
             wr.assert_clean_stop_order_increase_with_odom(nearest_rawnav_point_to_wmata_schedule_dat)
+            .assign(versionid = sched_version)
         )
         
         # Append to outputs for this route
