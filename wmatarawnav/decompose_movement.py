@@ -46,7 +46,10 @@ def reset_odom(
         # keep a copy of original...
         rawnav[(var + "_og")] = rawnav[var]
         # ...but overwrite the original for convenience
-        rawnav[(var)] = rawnav[var] - rawnav.loc[reset_idx,var]
+        try:
+            rawnav[(var)] = rawnav[var] - rawnav.loc[reset_idx,var]
+        except:
+            breakpoint()
     
     rawnav = rawnav.reset_index()
     
@@ -401,6 +404,12 @@ def trim_ends(
         rawnav_ti
     ):
     
+    rawnav_ti = (
+         rawnav_ti
+         .assign(index_loc_int = lambda x: x.index_loc.astype("int64"))
+         .set_index('index_loc_int')
+    )
+    
     first_idx = (
         rawnav_ti
         .loc[rawnav_ti.stop_id_group_ext.notna() | rawnav_ti.stop_id_loc.notna()]
@@ -415,7 +424,8 @@ def trim_ends(
     
     rawnav_ti = (
         rawnav_ti
-        .iloc[first_idx:last_idx]    
+        .loc[first_idx:last_idx]    
+        .reset_index(drop = True)
     )    
     
     return(rawnav_ti)
@@ -1051,9 +1061,6 @@ def interp_over_sec(rawnav, interp_method = "index"):
     rawnav = (
         rawnav
         .assign(
-            
-        )
-        .assign(
             odom_ft = lambda x: 
                 np.where(
                     x.collapsed_rows.eq(1) | (x.collapsed_rows.gt(1) & x.row_number.eq(0)),
@@ -1159,7 +1166,7 @@ def calc_accel_jerk(rawnav, groupvars = ['filename','index_run_start'], fps_col 
             accel_next = lambda x: (x[fps_col]- x[fps_lag_col]) / (x.sec_past_st_next - x.sec_past_st),
         )
         # as before, we'll set these cases to nan and then fill
-         .assign(
+        .assign(
             accel_next = lambda x: x.accel_next.replace([np.Inf,-np.Inf],np.nan),
         )
     )
