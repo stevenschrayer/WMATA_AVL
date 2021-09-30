@@ -3,7 +3,7 @@ library(tidyverse)
 library(sf)
 library(mapview)
 
-path_sp <- "C:/OD/Foursquare ITP/Projects - WMATA Datamart"
+path_sp <- "C:/OD.old/Foursquare ITP/Projects - WMATA Datamart"
 
 path_data <-
   file.path(
@@ -15,7 +15,8 @@ path_data <-
 
 rawnav <-
   read_csv(
-    file.path(path_data,"route43_decomp_match.csv")
+    file.path(path_data,"route43_decomp_match.csv"),
+    n_max = 100
   )
 
 
