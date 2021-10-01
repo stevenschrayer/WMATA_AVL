@@ -39,22 +39,22 @@ import wmatarawnav as wr
 #### Read decomp
 rawnav = (
     pq.read_table(
-        source=os.path.join(path_processed_data,"decomp_hi.parquet"),
+        source=os.path.join(path_processed_data,"rawnav_data_hi.parquet"),
         use_pandas_metadata = True,
-        filters = [('route','=','43')]
+        filters = [('route','=','36')]
     )
     .to_pandas()
 )
 
-begin_time = datetime.now()  ##
-print("Begin Time : {}".format(begin_time))
+rawnav_trip = (
+    rawnav
+    .query("filename == 'rawnav02102171021.txt' & index_run_start == 3639")
+)
 
 rawnav_matched = (
-    rawnav
+    rawnav_trip
     .groupby(['filename','index_run_start'])
     .apply(lambda x: wr.mapmatch(x))    
 )
 
-execution_time = str(datetime.now() - begin_time).split('.')[0]
-print("map match runtime for route oct17 and oct19 : {}".format(execution_time))
-
+rawnav_matched.to_csv("rematch.csv")
