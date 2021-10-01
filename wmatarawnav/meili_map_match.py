@@ -48,9 +48,11 @@ def mapmatch(rawnav_ti):
     )
     # borrowed from
     # https://github.com/nick-caros/transit-map-matching/blob/main/valhalla_readme.md
-    use_trace_options_search_radius = 100
+    use_trace_options_search_radius = 100 
     use_trace_options_interpolation_distance = 100
     use_trace_options_turn_penalty_factor = 500
+    # these are some of ours
+    use_trace_options_gps_accuracy = 50
     
     # this seemed totally ignored, or else i got it wrong
     # still, we'lll leave in. I think in the version of meili that we're 
@@ -90,7 +92,8 @@ def mapmatch(rawnav_ti):
                 "directions_options" : use_directions,
                 "trace_options.search_radius" : use_trace_options_search_radius,
                 "trace_options.interpolation_distance" : use_trace_options_interpolation_distance,
-                "trace_options.turn_penalty_factor" : use_trace_options_turn_penalty_factor
+                "trace_options.turn_penalty_factor" : use_trace_options_turn_penalty_factor,
+                "trace_options.gps_accuracy" : use_trace_options_gps_accuracy 
             }
         )
     )
@@ -262,3 +265,88 @@ def mapmatch(rawnav_ti):
     )
     
     return(rawnav_return)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def locate(lat,long):
+    
+    # Set params
+    use_verbose = True
+    # TODO: could do multiple...
+    use_locations = {"lat": lat, "lon" : long} 
+    use_costing = "bus"
+    use_directions = dict(
+        units = "miles",
+        directions_type = "none"
+    )
+    use_id = "12345"
+    
+    # load params
+    data = (
+        json.dumps(
+            {
+                "locations" : [use_locations],
+                "verbose" : use_verbose,
+                "costing" : use_costing,
+                "directions_options" : use_directions,
+                "id" : use_id
+            }
+        )
+    )
+    url = "http://localhost:8002/locate"
+    headers = {'Content-type': 'application/json'}
+    
+    r = requests.get(url, data=data, headers=headers)
+
+    if (r.status_code != 200):
+        breakpoint() # if you get this, need to handle any remaining errors more thoughtfully above
+        raise NameError("request failed")
+
+    rjson = r.json()
+
+    edges = pd.DataFrame(rjson[0]['edges'])
+    
+    # this feels wrong, pretty sure will break if there are multiple
+    try:
+        edge_shape = edges["edge_info"].to_dict()[0].get('shape')
+        edge_id = edges["edge_id"].to_dict()[0].get('value')
+    except:
+        # in case the above fails, time to debug
+        breakpoint()
+
+    edge_return = (
+        pd.DataFrame(
+            {
+                "id" : [edge_id],
+                "shape" : [edge_shape]
+            }    
+        )    
+    )
+
+    return(edge_return)    
+
