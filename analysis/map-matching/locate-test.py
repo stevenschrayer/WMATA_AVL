@@ -8,6 +8,11 @@ Created on Fri Oct  1 03:39:17 2021
 # % Environment Setup
 import os, sys, pandas as pd, pyarrow.parquet as pq
 from datetime import datetime
+from pypolyline.util import encode_coordinates, decode_polyline
+import geopandas as gpd
+import shapely.geometry as sg
+import shapely.ops as sops
+
 
 # For postgresql
 # TODO: for now, skipping server, as amit says it's a bit slow
@@ -42,6 +47,39 @@ testdf = pd.DataFrame(
 )
 
 testloc = wr.locate(testdf)
+
+def run_decode(y):
+    z = (
+        decode_polyline(
+            bytes(
+                y,
+                "ascii"
+            ),
+            6
+        )
+    )
+        
+    aa = sg.LineString(z)
+    # the polyline function flips coords from default order for whatever reason,
+    # so it's easier to just flip after we make geometry
+    # https://gis.stackexchange.com/questions/354273/flipping-coordinates-with-shapely
+    ab = sops.transform(lambda x, y : (y, x), aa)
+    
+    return(ab)
+    
+    
+
+testloc['decoded_shape'] = (
+    testloc['edge_shape']
+    .apply(
+        lambda x: run_decode(x)
+    )    
+)
+
+testgdf = gpd.GeoDataFrame(testloc,geometry = "decoded_shape",crs = "EPSG:4326")
+
+testgdf.to_file("test.geojson", driver='GeoJSON')
+
 
 # do a full match and loc
 rawnav = (

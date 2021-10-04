@@ -11,6 +11,12 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import pandas as pd
 import numpy as np
+import sys
+from pypolyline.util import decode_polyline
+import geopandas as gpd
+# what are the standard abbreviations for these?
+import shapely.geometry as sg
+import shapely.ops as sops
 
 
 def mapmatch(rawnav_ti):
@@ -404,3 +410,60 @@ def locate(df, latcol = "latmatch", longcol = "longmatch"):
 
     return(r_return)    
 
+def val_decode(encoded):
+    # https://valhalla.readthedocs.io/en/latest/decoding/
+    # there's another library to do this pypolyline, but isn't compatible with python 3.9 on windows
+    # apparently, and i dont want to create another, running into challenges with install, go figure 
+    #six degrees of precision in valhalla
+
+    inv = 1.0 / 1e6;
+   
+    decoded = []
+    previous = [0,0]
+    i = 0
+    #for each byte
+    while i < len(encoded):
+      #for each coord (lat, lon)
+      ll = [0,0]
+      for j in [0, 1]:
+        shift = 0
+        byte = 0x20
+        #keep decoding bytes until you have this coord
+        while byte >= 0x20:
+          byte = ord(encoded[i]) - 63
+          i += 1
+          ll[j] |= (byte & 0x1f) << shift
+          shift += 5
+        #get the final value adding the previous offset and remember it for the next
+        ll[j] = previous[j] + (~(ll[j] >> 1) if ll[j] & 1 else (ll[j] >> 1))
+        previous[j] = ll[j]
+      #scale by the precision and chop off long coords also flip the positions so
+      #its the far more standard lon,lat instead of lat,lon
+      decoded.append([float('%.6f' % (ll[1] * inv)), float('%.6f' % (ll[0] * inv))])
+    #hand back the list of coordinates
+    return decoded
+
+
+def run_decode(encoded):
+    # decode using pypolyline
+    try:
+        decoded_list = (
+            decode_polyline(
+                bytes(
+                    encoded,
+                    "ascii"
+                ),
+                6
+            )
+        )
+    except:
+        breakpoint()
+      
+    # convert list to polyline
+    decoded_ls = sg.LineString(decoded_list)
+    # the polyline function flips coords from default order for whatever reason,
+    # so it's easier to just flip after we make geometry
+    # https://gis.stackexchange.com/questions/354273/flipping-coordinates-with-shapely
+    decoded_ls_flip = sops.transform(lambda x, y : (y, x), decoded_ls)
+    
+    return(decoded_ls_flip)
