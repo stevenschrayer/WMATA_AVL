@@ -293,28 +293,40 @@ def mapmatch(rawnav_ti):
 
 
 
-def locate(lat,long):
+def locate(df, latcol = "latmatch", longcol = "longmatch"):
+    # TODO: test that df has cols lat and long
     
     # Set params
     use_verbose = True
     # TODO: could do multiple...
-    use_locations = {"lat": lat, "lon" : long} 
+    use_locations = (
+        df
+        .filter([latcol,longcol], axis = "columns")
+        .rename(
+            columns = 
+                {
+                latcol : "lat",
+                longcol : "lon"
+                },
+        )
+        .to_dict(orient = "records")
+    )
+        
     use_costing = "bus"
     use_directions = dict(
         units = "miles",
         directions_type = "none"
     )
-    use_id = "12345"
     
     # load params
     data = (
         json.dumps(
             {
-                "locations" : [use_locations],
+                "locations" : use_locations,
                 "verbose" : use_verbose,
                 "costing" : use_costing,
                 "directions_options" : use_directions,
-                "id" : use_id
+                "id" : 12345
             }
         )
     )
@@ -322,31 +334,73 @@ def locate(lat,long):
     headers = {'Content-type': 'application/json'}
     
     r = requests.get(url, data=data, headers=headers)
-
+    
     if (r.status_code != 200):
         breakpoint() # if you get this, need to handle any remaining errors more thoughtfully above
         raise NameError("request failed")
 
-    rjson = r.json()
+    r_df = pd.DataFrame(r.json())
+    # this is a little sloppy in that we don't keep track of what lat/long input 
+    # generated the ids, but we get teh edge ids in the output so we can keep track of 
+    # what's missing or not
+    r_edge_melt = pd.json_normalize(r_df.edges).melt()
+    r_edge_melt = r_edge_melt.loc[r_edge_melt.value.notna()]
 
-    edges = pd.DataFrame(rjson[0]['edges'])
-    
-    # this feels wrong, pretty sure will break if there are multiple
-    try:
-        edge_shape = edges["edge_info"].to_dict()[0].get('shape')
-        edge_id = edges["edge_id"].to_dict()[0].get('value')
-    except:
-        # in case the above fails, time to debug
-        breakpoint()
-
-    edge_return = (
-        pd.DataFrame(
-            {
-                "id" : [edge_id],
-                "shape" : [edge_shape]
-            }    
-        )    
+    r_return = (
+            r_edge_melt
+            .assign(
+                edge_shape = 
+                    lambda x: 
+                        list(
+                            map(
+                                lambda y: y.get('edge_info.shape'),
+                                x.value
+                            )
+                        ),
+                edge_id = 
+                    lambda x: 
+                        list(
+                            map(
+                                lambda y: y.get('edge_id.value'),
+                                x.value
+                            )
+                        ),
+                edge_forward = 
+                    lambda x: 
+                        list(
+                            map(
+                                lambda y: y.get('edge.forward'),
+                                x.value
+                            )
+                        ),
+                edge_end_node = 
+                    lambda x: 
+                        list(
+                            map(
+                                lambda y: y.get('edge.end_node.value'),
+                                x.value
+                            )
+                        ),
+                edge_names = 
+                    lambda x: 
+                        list(
+                            map(
+                                lambda y: y.get('edge_info.names'),
+                                x.value
+                            )
+                        ) 
+            )
     )
+        
+    r_return['street_names'] = (
+            r_return['edge_names']  
+            .replace(np.nan,"")
+            .transform(
+                lambda x: ", ".join(map(str,x))
+            )
+        )    
+    
+    r_return = r_return.drop(['value','variable','edge_names'], axis = "columns")
 
-    return(edge_return)    
+    return(r_return)    
 

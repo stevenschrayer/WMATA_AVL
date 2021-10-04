@@ -34,13 +34,14 @@ wmata_crs = 2248
 import wmatarawnav as wr
 
 # DO the locate
-testloc = wr.locate(lat = 38.901333, long = -77.04216)
+testdf = pd.DataFrame(
+    {
+         "latmatch" : [38.901333, 38.883781],
+         "longmatch" : [-77.04216, -76.99366]
+     }
+)
 
-
-
-
-
-
+testloc = wr.locate(testdf)
 
 # do a full match and loc
 rawnav = (
@@ -61,4 +62,28 @@ id_dist = (
     )
 )
 
-id_shape = 
+id_shape = wr.locate(id_dist, latcol = 'latmatch', longcol = 'longmatch')
+
+id_shape_dist = (
+    id_shape
+    .drop_duplicates(['edge_id','edge_shape'])    
+)
+
+# not sure why there still seem to be dupes here
+check_all = (
+    id_dist 
+    .merge(
+        id_shape_dist,
+        left_on = 'id',
+        right_on = 'edge_id',
+        how = 'outer'
+    )
+    .assign(
+        edge_id = lambda x: x.edge_id.combine_first(x.id)    
+    )
+)
+
+# TODO: there's at least one case that didn't match,
+# 2049706056392
+
+check_all.to_csv('encodedlines36.csv')
