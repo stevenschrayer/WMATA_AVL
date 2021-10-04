@@ -8,6 +8,7 @@ rg8_unique <-
       cols_only(
         'filename' = col_character(),
         'index_run_start' = col_number(),
+        'pattern' = col_number(),
         'latmatch' = col_number(),
         'longmatch' = col_number()
       )
