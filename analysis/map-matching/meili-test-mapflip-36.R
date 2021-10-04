@@ -19,6 +19,7 @@ rawnav <-
   )
 
 
+
 preview_match <-
   function(
     atripfile,
@@ -152,4 +153,9 @@ preview_match(
 # index_run_start 9602
 # 11446
 
-
+# seocnd one:
+# -76.99366 
+# 38.883781 
+# rawnav02102171021.txt 
+# run start 3639 
+# index loc 4756 
