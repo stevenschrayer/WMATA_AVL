@@ -1,0 +1,489 @@
+---
+title: "Linear Referencing Test"
+output: html_notebook
+---
+
+
+## Setup
+```{r warning=TRUE, include=FALSE}
+library(tidyverse)
+library(sf)
+library(mapview)
+library(ggplot2)
+
+path_sp <- "C:/OD/Foursquare ITP/Projects - WMATA Datamart"
+options(scipen = 999)
+```
+Read in parquet data
+```{r}
+route_search_string <- "route=30N"
+
+filelist <-
+  list.files(
+    path = file.path(
+      path_sp,
+      "Task 3 - Bus Priority",
+      "Data",
+      "02-Processed",
+      "decomp_match_hi.parquet"
+    ),
+    recursive = TRUE,
+    full.names = TRUE
+  )
+
+filelist_fil <-
+  filelist[str_detect(filelist,route_search_string)]
+
+rawnav_30n <-
+  map_dfr(filelist_fil,
+        ~ arrow::read_parquet(.x)) %>%
+  mutate(
+    # readd the parquet grouping var
+    route = "30N",
+    unique_id = paste0(filename, "_", index_run_start)
+  )
+```
+
+Read in valid shapes
+These 
+```{r}
+matched_points <-
+  read_sf(
+    file.path(
+      path_sp,
+      "Task 3 - Bus Priority",
+      "Data",
+      "01-Interim",
+      "matched_pattern_shapes_points_hi.geojson"
+    )
+  )
+
+shapes_dissolve <-
+  matched_points %>%
+  st_drop_geometry() %>%
+  distinct(
+    route = route_short_name,
+    direction_id_all,
+    id
+  ) %>%
+  mutate(
+    isvalid = TRUE
+  )
+
+# TODO: again, this would be better done by pattern id, but we don't yet have
+# a clean set of shapes for 2017 or 2019 that are matched to patterns
+rawnav_30n_val <-
+  rawnav_30n %>%
+  left_join(
+    shapes_dissolve,
+    by = c("route","id")
+  ) %>%
+  replace_na(
+    list(isvalid = FALSE)
+  )
+
+# pick patterns that match 98% of segments. again, a little iffy given the 
+# fact we're going by route and not route pattern
+rawnav_30n_val_all <-
+  rawnav_30n_val %>%
+  dplyr::group_by(filename, index_run_start) %>%
+  dplyr::filter(
+    (sum(isvalid) / n() > .98)
+  )
+
+
+```
+These are the first six trip instances that mostly match for 30N
+```{r}
+rawnav_30n_val_all %>%
+  filter(
+    pattern == 1
+  ) %>%
+  pull(unique_id) %>%
+  unique() %>%
+  head()
+```
+
+Let's look at one in closer detail
+```{r}
+rawnav_ti <-
+  rawnav_30n_val_all %>%
+  filter(
+    unique_id == "rawnav06473191002.txt_16165"
+  ) %>%
+  arrange(
+    index_loc 
+  ) %>%
+  # TODO: gah, i screwed this up again
+  distinct(
+    index_loc,
+    .keep_all = TRUE
+  ) %>%
+  mutate(
+    dist_along_edge_mi_cum_seg = length * distance_along_edge,
+    dist_along_edge_mi_cum = cumsum(dist_along_edge_mi_cum_seg),
+  ) 
+
+print(max(rawnav_ti$dist_along_edge_mi_cum))
+```
+total distance value seems a bit long. length of edge is supposed to be km, so this means the total length is 76.9 mi? but actually, the route should only be about 13.58m 
+```{r}
+print(max(rawnav_ti$odom_ft) / 5280)
+```
+How could this happen? 
+
+```{r}
+rawnav_ti_slim <-
+  rawnav_ti %>%
+  ungroup() %>%
+  select(
+    index_loc,
+    sec_past_st,
+    odom_ft,
+    odom_ft_marg,
+    distance_along_edge,
+    contains("dist_along_edge"),
+    odom_ft_marg,
+    id, 
+    street_names,
+    length,
+    isvalid,
+    latmatch,
+    longmatch
+  ) %>%
+  sf::st_as_sf(
+    .,
+    coords = c("longmatch", "latmatch"),
+    crs = 4326L, #WGS84
+    agr = "constant",
+    remove = FALSE
+  )
+      
+```
+
+how much feet coverage are we getting from non primary roads? like 1/3rd of a kilometer 
+```{r}
+rawnav_ti_slim %>%
+  st_drop_geometry() %>%
+  filter(isvalid == FALSE) %>%
+  pull(dist_along_edge_mi_cum_seg) %>%
+  sum()
+```
+
+oh, i think i'm not summing the marginal values correctly. But to pull out marginal values, we have to assume that you traveled the first part of a ID, then on the last point probably should just assume you traveled the rest as well. will also need to skip the non-valid cases too somehow?
+
+let's try to recalculate those vals again
+```{r}
+# TODO: need to double chekc that matched values along a segment are monotonci
+rawnav_ti_slim_recalc1 <-
+  rawnav_ti_slim %>%
+  filter(
+    isvalid == TRUE
+  ) %>%
+  st_drop_geometry() %>%
+  group_by(id) %>%
+  mutate(
+    dist_along_edge_mi_marg_seg = 
+      dist_along_edge_mi_cum_seg - dplyr::lag(dist_along_edge_mi_cum_seg, default = 0),
+    dist_along_edge_mi_marg_corr = 
+      length - max(dist_along_edge_mi_cum_seg)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    id_order = data.table::rleid(id)
+  )
+
+rawnav_ti_slim_corr_factors <-
+  rawnav_ti_slim_recalc1 %>%
+  group_by(
+    id_order
+  ) %>%
+  summarize(
+    dist_along_edge_mi_marg_corr = unique(dist_along_edge_mi_marg_corr)
+  ) %>%
+  mutate(
+    id_order = id_order + 1
+  )
+
+
+rawnav_ti_slim_recalc2 <-  
+  rawnav_ti_slim_recalc1 %>%
+  select(
+    -dist_along_edge_mi_marg_corr
+  ) %>%
+  left_join(
+    rawnav_ti_slim_corr_factors,
+    by = "id_order"
+  ) %>%
+  replace_na(
+    list(dist_along_edge_mi_marg_corr = 0)
+  ) %>%
+  mutate(
+    dist_along_edge_mi_marg_seg = 
+      if_else(
+        row_number() == 1,
+        dist_along_edge_mi_marg_seg + dist_along_edge_mi_marg_corr, # should be the previous one though
+        dist_along_edge_mi_marg_seg
+      )
+  ) %>%
+  ungroup() %>%
+  mutate(
+    dist_along_edge_mi_cum_recalc = cumsum(dist_along_edge_mi_marg_seg),
+    dist_along_edge_ft_cum_recalc = dist_along_edge_mi_cum_recalc * 5280,
+    dist_along_edge_ft_marg_recalc = lead(dist_along_edge_ft_cum_recalc) - dist_along_edge_ft_cum_recalc 
+  ) %>%
+  replace_na(
+    list(dist_along_edge_ft_marg_recalc = 0)
+  )
+
+```
+
+```{r}
+print(max(rawnav_ti_slim_recalc2$dist_along_edge_mi_cum_recalc))
+```
+well, this is closer at 11.8km, but now we're well short of what the odometer says (21.9 km)
+
+what are the differences between the marginal feet values when converted to feet?
+
+```{r}
+rawnav_ti_slim_recalc2 %>%
+  select(
+    index_loc,
+    id,
+    odom_ft,
+    dist_along_edge_ft_cum_recalc,
+    odom_ft_marg,
+    dist_along_edge_ft_marg_recalc
+  ) %>%
+  View()
+```
+
+geez, just seems like the odometer is a bit faster....
+
+what does it look when we measure on the map?
+```{r}
+rawnav_formap <-
+  rawnav_ti_slim_recalc2 %>%
+  select(
+    index_loc,
+    id,
+    odom_ft,
+    dist_along_edge_ft_cum_recalc,
+    odom_ft_marg,
+    dist_along_edge_ft_marg_recalc,
+    latmatch,
+    longmatch
+  ) %>%
+  mutate(
+    diff_odom = odom_ft_marg - dist_along_edge_ft_marg_recalc
+  ) %>%
+  sf::st_as_sf(
+    .,
+    coords = c("longmatch", "latmatch"),
+    crs = 4326L, #WGS84
+    agr = "constant",
+    remove = FALSE
+  ) %>%
+  arrange(
+    diff_odom
+  )
+
+{mapview::mapview(rawnav_formap, zcol = "diff_odom")}@map %>%
+  leaflet::addMeasure()
+
+```
+
+when i measure this one, it seems like 40+ feet but it measures as 25 something using the valhalla measurements
+```{r}
+{mapview::mapview(rawnav_formap, zcol = "dist_along_edge_ft_marg_recalc")}@map %>%
+  leaflet::addMeasure() %>%
+    leaflet::setView(
+    lng = -77.04587,
+    lat = 38.90132,
+    zoom = 19
+  )
+```
+
+
+```{r}
+{mapview::mapview(rawnav_formap, zcol = "odom_ft_marg")}@map %>%
+  leaflet::addMeasure() %>%
+    leaflet::setView(
+    lng = -77.04587,
+    lat = 38.90132,
+    zoom = 19
+  )
+```
+
+Wow, almost perfect when measured from odom_ft! Something is going on with the length along that i must not get yet. Maybe i am converting to feet wrong?   
+
+
+doesn't seem that far off at any particular point, other than a few places where there's a jump. what gives?
+```{r}
+ggplot(
+  rawnav_ti_slim_recalc2
+) +
+  geom_point(
+    aes(x = odom_ft, y = dist_along_edge_ft_cum_recalc)
+  ) +
+  geom_abline(aes(intercept = 0, slope = 1),
+                color = "blue")
+```
+
+and damn, what gives on the little jogs? i should check that out.
+```{r}
+ggplot(
+  rawnav_ti_slim_recalc2
+) +
+  geom_point(
+    aes(x = odom_ft_marg, y = dist_along_edge_ft_marg_recalc)
+  ) +
+  geom_abline(aes(intercept = 0, slope = 1),
+                color = "blue")
+```
+I'm not sure what to make of this... even some negative values? probably some points matched out of order somehow? could look into this more?
+
+# try it out
+let's pick out two tirp instances and apply these changes, then do a spacetime diagram with the basic_decomp
+```{r}
+rawnav_tis <-
+  rawnav_30n_val_all %>%
+  filter(
+    unique_id %in% c("rawnav06473191002.txt_16165", "rawnav06475191004.txt_21332")
+  ) %>%
+  arrange(
+    index_loc 
+  ) %>%
+  distinct(
+    filename,
+    index_run_start,
+    index_loc,
+    .keep_all = TRUE
+  ) %>%
+  mutate(
+    dist_along_edge_mi_cum_seg = length * distance_along_edge,
+    dist_along_edge_mi_cum = cumsum(dist_along_edge_mi_cum_seg),
+  ) 
+
+rawnav_tis1 <-
+  rawnav_tis %>%
+  filter(
+    isvalid == TRUE
+  ) %>%
+  group_by(filename,index_run_start, id) %>%
+  mutate(
+    dist_along_edge_mi_marg_seg = 
+      dist_along_edge_mi_cum_seg - dplyr::lag(dist_along_edge_mi_cum_seg, default = 0),
+    dist_along_edge_mi_marg_corr = 
+      length - max(dist_along_edge_mi_cum_seg)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    id_order = data.table::rleid(id)
+  )
+
+rawnav_tis1_corr_factors <-
+  rawnav_tis1 %>%
+  group_by(
+    filename,
+    index_run_start,
+    id_order
+  ) %>%
+  summarize(
+    dist_along_edge_mi_marg_corr = unique(dist_along_edge_mi_marg_corr),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    id_order = id_order + 1
+  )
+
+
+rawnav_tis2 <-  
+  rawnav_tis1 %>%
+  select(
+    -dist_along_edge_mi_marg_corr
+  ) %>%
+  left_join(
+    rawnav_tis1_corr_factors,
+    by = c("id_order","filename","index_run_start")
+  ) %>%
+  replace_na(
+    list(dist_along_edge_mi_marg_corr = 0)
+  ) %>%
+  group_by(
+    id,
+    filename,
+    index_run_start
+  ) %>%
+  mutate(
+    dist_along_edge_mi_marg_seg = 
+      if_else(
+        row_number() == 1,
+        dist_along_edge_mi_marg_seg + dist_along_edge_mi_marg_corr, # should be the previous one though
+        dist_along_edge_mi_marg_seg
+      )
+  ) %>%
+  ungroup() %>%
+  group_by(
+    filename,
+    index_run_start
+  ) %>%
+  mutate(
+    dist_along_edge_mi_cum_recalc = cumsum(dist_along_edge_mi_marg_seg),
+    dist_along_edge_ft_cum_recalc = dist_along_edge_mi_cum_recalc * 5280,
+    dist_along_edge_ft_marg_recalc = lead(dist_along_edge_ft_cum_recalc) - dist_along_edge_ft_cum_recalc 
+  ) %>%
+  replace_na(
+    list(dist_along_edge_ft_marg_recalc = 0)
+  )
+
+```
+
+```{r}
+g <- 
+  rawnav_tis2 %>%
+  filter(
+    unique_id == "rawnav06475191004.txt_21332" 
+  ) %>%
+  ggplot(
+  ) +
+  geom_line(
+    aes(
+      y = dist_along_edge_ft_cum_recalc,
+      x = sec_past_st,
+      group = unique_id,
+      text = stop_id_group
+    ),
+    color = "grey80"
+  ) +
+  geom_point(
+    aes(
+      color = basic_decomp_ext,
+      y = dist_along_edge_ft_cum_recalc,
+      x = sec_past_st,
+      group = unique_id,
+      text = stop_id_group
+    )
+  ) +
+  xlab("Time Past Trip Start (Seconds)") +
+  ylab("Matched Distance (Feet)") +
+  theme_minimal() +
+  scale_color_manual(
+    values = c(
+      # based on brewer qualitative set 3
+      "steady" = "#80b1d3",
+      "decel_doors" = "#ffffb3",
+      "decel_nodoors" = "#bebada",
+      "stopped_doors" = "#fb8072",
+      "stopped_nodoors" = "#fdb462",
+      "accel_doors" = "#8dd3c7",
+      "accel_nodoors" = "#bebada",
+      "other_delay" = "#bebada"
+    )
+  ) +
+  guides(color=guide_legend(title='Decomposition'))
+
+plotly::ggplotly(g)
+```
+
+
