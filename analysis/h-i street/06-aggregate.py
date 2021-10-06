@@ -186,6 +186,7 @@ for analysis_route in analysis_routes:
 # export
 # bring in the valid id segments for each route
 # right now this was done in R and i am hacking it in, later we will want to do this in python
+# we also need to use a better python library for densifying than the R one
 valid_shapes = (
     gpd.read_file(
         os.path.join(

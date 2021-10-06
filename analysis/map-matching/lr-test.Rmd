@@ -63,7 +63,6 @@ shapes_dissolve <-
   st_drop_geometry() %>%
   distinct(
     route = route_short_name,
-    direction_id_all,
     id
   ) %>%
   mutate(
@@ -113,11 +112,6 @@ rawnav_ti <-
   ) %>%
   arrange(
     index_loc 
-  ) %>%
-  # TODO: gah, i screwed this up again
-  distinct(
-    index_loc,
-    .keep_all = TRUE
   ) %>%
   mutate(
     dist_along_edge_mi_cum_seg = length * distance_along_edge,

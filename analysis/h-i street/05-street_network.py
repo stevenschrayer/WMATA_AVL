@@ -99,9 +99,11 @@ id_shape_dist = (
 
 # Export to geojson
 ## Could also export to parquet in newer formats, but i think this is okay for this size of data.
+# TODO: move this to processed, not interim
 (
- id_shape_dist
- .to_file(
-    os.path.join(path_sp,"Data","01-Interim","meili_shapes_hi.geojson"), 
-    driver='GeoJSON')
+    id_shape_dist
+    .to_file(
+        os.path.join(path_sp,"Data","01-Interim","meili_shapes_hi.geojson"), 
+        driver='GeoJSON'
+    )
 )
