@@ -117,7 +117,12 @@ def match_stops(
         .sort_values(['odom_ft_stop','index_loc'])
     )
     
-    rawnav_fil = rawnav.copy()
+    # we make a copy of the data and will remove bits of the data as we successfully complete
+    # rounds of the iteration.
+    rawnav_fil = (
+        rawnav
+        .sort_values(by = ['odom_ft'])
+    )
     
     query_list = [
         'stop_decomp == "doors_at_O_S"',
@@ -249,7 +254,7 @@ def match_stops(
                 )
         )
         .drop(columns = ['stop_id_group_pu'])
-        .sort_values(['filename','index_run_start','index_loc'])
+        .sort_values(by = ['filename', 'index_run_start', 'index_loc'])
     )
     
     # TODO: add tests or checks that if we matched 15 stops to a file in stop_index,
@@ -577,6 +582,7 @@ def decompose_mov(
             # stops would catch the previous stop at an intersection.
             near_stop = lambda x: x.min_odom - x.odom_ft <= 100
         )
+        .sort_values(by = ['filename','index_run_start','index_loc'])
     )
 
     # we only want to collapse cases if the points within a stopped_changes group are 
