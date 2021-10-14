@@ -657,10 +657,18 @@ def decompose_mov(
         rawnav
         .assign(
             # need a True/False that's easily coercible to numeric
-            # TODO: consider overriding is_stopped if the door opens. These are probably cases where the
-            # vehicle did stop for a moment 
-            # or at the very least, test that we don't have these cases in the decomposition.
-            is_stopped = lambda x, stop = stopped_fps: (x.fps_next.le(stop) | x.door_state.eq("O"))
+            # TODO: if it's the last ping and there's no speed, should probably fill forward 
+            # from the last ping.
+            is_stopped = lambda x, stop = stopped_fps, slow = slow_fps : 
+                (
+                    # in case the instantaneous speed is off, we also check that the smoothed
+                    # speed is below the slow rate too
+                    # WT: since i simplified some of the odometer aggregation and removed that
+                    # interpolation, there are a few things that are a bit off again that need 
+                    # more TLC
+                    (x.fps_next.le(stop) & x.fps_next_sm.le(slow)) | 
+                    x.door_state.eq("O")
+                )
         )
         .assign(
             veh_state_calc = lambda x: 
