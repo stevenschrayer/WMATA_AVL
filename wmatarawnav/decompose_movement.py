@@ -142,19 +142,51 @@ def match_stops(
     """   
     #### Find the nearest point to any stop
     # This adds a column 'stop_id_loc' and 'stop_sequence_loc'
-    rawnav = (
-        rawnav
-        .merge(
+    # because we could have aggregated a timestamp value that is the index_loc
+    # join value, we 
+    new_nearest = (
+        pd.merge_asof(
             stop_index
             .filter(items = ['filename','index_run_start','index_loc','stop_id','stop_sequence'])
+            .sort_values(['index_loc'])
             .rename(
                 columns = {
                     'stop_id' : 'stop_id_loc',
-                    'stop_sequence' : 'stop_sequence_loc'
+                    'stop_sequence' : 'stop_sequence_loc',
+                    'index_loc' : 'stop_index_loc'
                 }
             ),
-            left_on = ['filename','index_run_start','index_loc'],
-            right_on = ['filename','index_run_start','index_loc'],
+            rawnav
+            .filter(['filename','index_run_start','index_loc'], axis = "columns")
+            .rename(
+                columns = {
+                    'index_loc' : 'rawnav_index_loc'
+                }
+            )
+            .sort_values(['rawnav_index_loc'])
+            ,
+            by = ['filename','index_run_start'],
+            left_on = ['stop_index_loc'],
+            right_on = ['rawnav_index_loc'],
+            # in some cases we collapse right at the index_loc we need to join on, so this
+            # is our quick solution
+            direction = "nearest",
+            tolerance = 10
+        )
+        .drop(
+            ['stop_index_loc'],
+            axis = "columns"
+        )
+        .rename(
+            columns = {"rawnav_index_loc" : 'index_loc'}
+        )
+    )
+    
+    rawnav = (
+        rawnav
+        .merge(
+            new_nearest,
+            on = ['filename', 'index_run_start', 'index_loc'],
             how = "left"
         )
     )
