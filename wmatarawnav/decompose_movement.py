@@ -624,7 +624,7 @@ def decompose_mov(
     -------
     rawnav: pd.DataFrame
         rawnav data with decomposition columns added:
-        - veh_state_calc: A recalculation of veh_state based on the stopped_fps state.
+        - veh_state_calc: A recalculation of veh_state based on the stopped_fps parameter.
         - basic_decomp: the decomposition of values into accel, decel, stopped, steady state, 
             and other_delay.
         - stopped_changes_collapse: an integer value that changes every time the trip instance 
@@ -692,7 +692,7 @@ def decompose_mov(
         rawnav
         .assign(
             is_steady = lambda x, thresh = steady_accel_thresh, slow = slow_fps: 
-                (x.fps3.ge(slow)) & 
+                (x.fps_next_sm.ge(slow)) & 
                 (x.is_stopped.eq(False)) & 
                 ((x.accel9 > -thresh) & (x.accel9 < thresh))
         )
