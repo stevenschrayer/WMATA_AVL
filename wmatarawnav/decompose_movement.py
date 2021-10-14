@@ -1170,7 +1170,8 @@ def agg_sec(rawnav):
             # TODO: this still comes out weird, because sometimes blank is originally read in from
             # parquet as float. Doesn't really matter, but anyway.
             blank = ('blank', lambda x: ','.join(x.unique().astype(int).astype(str))),
-            row_before_apc = ('row_before_apc', lambda x: ','.join(x.unique().astype(int).astype(str))),
+            # is 1 or 0, so if apc activity occurred, note that it did.
+            row_before_apc = ('row_before_apc', 'max'),
             collapsed_rows = ('index_loc','count'),
             odom_ft_min = ('odom_ft','min'),
             odom_ft_max = ('odom_ft','max'),
