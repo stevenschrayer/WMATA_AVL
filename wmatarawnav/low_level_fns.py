@@ -45,7 +45,10 @@ def reorder_first_cols(df,first_cols_list):
     # TODO: make this not duplicate columns if you accidentally list twice
     assert(isinstance(first_cols_list, list))
     
-    new_cols_order = first_cols_list + [col for col in df.columns if col not in first_cols_list]
+    # attempting to make it work if you list a column that doesn't exist in data. could be bad.
+    found_cols_list = [col for col in df.columns if col in first_cols_list]
+    
+    new_cols_order = found_cols_list + [col for col in df.columns if col not in found_cols_list]
     
     df = df[new_cols_order]
     
