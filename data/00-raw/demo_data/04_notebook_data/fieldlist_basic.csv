@@ -1,0 +1,22 @@
+sort,fieldname,source,type,nullable?,note
+1,filename,python rawnav parser,string,no,
+2,index_run_start,python rawnav parser,int,no,
+3,route_pattern,python rawnav parser,string,no,
+4,pattern,python rawnav parser,int,no,
+5,index_run_end,python rawnav parser,int,no,
+6,route,python rawnav parser,string,no,
+7,wday,python rawnav parser,string,no,
+8,start_date_time,python rawnav parser,datetime,no,
+9,end_date_time,python rawnav parser,datetime,no,
+10,index_loc,python rawnav parser,int,no,
+11,row_before_apc,python rawnav parser,int,no,"value that takes 1 if the ping is immediately before an APC tag, zero otherwise"
+12,door_state,rawnav source data,string,no,
+13,veh_state,rawnav source data,string,no,
+14,lat,rawnav source data,float,no,
+15,long,rawnav source data,float,no,
+16,lat_raw,rawnav source data,float,no,
+17,long_raw,rawnav source data,float,no,
+18,sat_cnt,rawnav source data,int,no,
+19,sec_past_st,rawnav source data,int,no,
+20,odom_ft,"rawnav source data, decomposition code",float,no,"Begins as integer, but becomes float following interpolation, smoothing"
+21,heading,rawnav source data,float,no,"integer, but becomes float following interpolation, smoothing"
