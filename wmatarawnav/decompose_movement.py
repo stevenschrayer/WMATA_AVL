@@ -1215,6 +1215,7 @@ def agg_sec(rawnav):
             collapsed_rows = ('index_loc','count'),
             odom_ft_min = ('odom_ft','min'),
             odom_ft_max = ('odom_ft','max'),
+            odom_ft_mean = ('odom_ft', 'mean'),
             veh_state_all = ('veh_state', lambda x: ','.join(x.unique().astype(str)))
         )
         # this seems to work more consistently than replace()
@@ -1248,6 +1249,9 @@ def agg_sec(rawnav):
             how = "outer",
             left_index = True,
             right_index = True
+        )
+        .assign(
+            odom_ft = lambda x: np.where(x.odom_ft_mean.notna(),x.odom_ft_mean,x.odom_ft)
         )
         .reset_index()
     )    
@@ -1301,6 +1305,7 @@ def agg_sec(rawnav):
              'collapsed_rows',
              'odom_ft_min',
              'odom_ft_max',
+             'odom_ft_mean',
              'stop_window_e',
              'stop_window_x',
              'row_before_apc'
@@ -1327,8 +1332,8 @@ def interp_over_sec(rawnav, interp_method = "index"):
     ----------
     rawnav : pd.DataFrame
         rawnav dataframe that has been pre-processed by the agg_sec() function        
-    interp_method : TYPE, optional
-        DESCRIPTION. The default is "index".
+    interp_method : str, optional
+        interpolation method passed to np.interpolate. The default is "index".
 
     Returns
     -------
