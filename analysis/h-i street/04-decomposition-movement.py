@@ -98,7 +98,7 @@ for analysis_route in analysis_routes:
     print('agg')
     rawnav_route = wr.agg_sec(rawnav_route)
     print('interp')
-    rawnav_route = wr.interp_over_sec(rawnav_route)
+    # rawnav_route = wr.interp_over_sec(rawnav_route)
     print('calc speed')
     rawnav_route = wr.calc_speed(rawnav_route)
     print('smooth speed')
