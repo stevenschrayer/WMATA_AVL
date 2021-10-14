@@ -590,7 +590,7 @@ def trim_ends(
         rawnav_ti
         .loc[rawnav_ti.stop_id_group_ext.notna() | rawnav_ti.stop_id_loc.notna()]
         .last_valid_index()
-    ) + 1
+    )    
     
     rawnav_ti = (
         rawnav_ti
