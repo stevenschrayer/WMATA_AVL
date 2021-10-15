@@ -1216,6 +1216,7 @@ def agg_sec(rawnav):
             odom_ft_min = ('odom_ft','min'),
             odom_ft_max = ('odom_ft','max'),
             odom_ft_mean = ('odom_ft', 'mean'),
+            heading_mean = ('heading', 'mean'),
             veh_state_all = ('veh_state', lambda x: ','.join(x.unique().astype(str)))
         )
         # this seems to work more consistently than replace()
@@ -1251,7 +1252,8 @@ def agg_sec(rawnav):
             right_index = True
         )
         .assign(
-            odom_ft = lambda x: np.where(x.odom_ft_mean.notna(),x.odom_ft_mean,x.odom_ft)
+            odom_ft = lambda x: np.where(x.odom_ft_mean.notna(),x.odom_ft_mean,x.odom_ft),
+            heading = lambda x: np.where(x.heading_mean.notna(),x.heading_mean,x.heading),
         )
         .reset_index()
     )    
@@ -1467,31 +1469,73 @@ def calc_speed(rawnav):
             and next ping .
 
     """
-    #### lag values
-    rawnav[['odom_ft_next','sec_past_st_next']] = (
+    # define cols to calc values on
+    allcols = ['sec_past_st','odom_ft','heading']
+    ycols = ['odom_ft', 'heading']
+    
+    rawnav[[colname + "_next" for colname in allcols]] = (
         rawnav
-        .groupby(['filename','index_run_start'], sort = False)[['odom_ft','sec_past_st']]
+        .groupby(['filename','index_run_start'], sort = False)[allcols]
         .transform(lambda x: x.shift(-1))
     )
+
+    for col_name in allcols:
+        kwargs_marg = {
+            col_name+'_marg': lambda x: x[col_name+'_next'] - x[col_name]
+        }
     
-    #### calculate FPS
-    rawnav = (
-        rawnav
-        .assign(
-            secs_marg = lambda x: x.sec_past_st_next - x.sec_past_st,
-            odom_ft_marg = lambda x: x.odom_ft_next - x.odom_ft,
-            fps_next = lambda x: ((x.odom_ft_next - x.odom_ft) / 
-                                (x.sec_past_st_next - x.sec_past_st))
+        rawnav = (
+            rawnav
+            .assign(
+                **kwargs_marg 
+            )
         )
+
+    for col_name in ycols:
+        kwargs_speed = {
+            col_name+'_speed_next': lambda x: 
+            ((x[col_name+'_next'] - x[col_name]) /
+             (x.sec_past_st_next - x.sec_past_st))
+        }
+         
         # if you get nan's, it's usually zero travel distance and zero time around 
         # doors. the exception is at the end of the trip.
-        .assign(
-            fps_next = lambda x: x.fps_next.replace([np.nan],0)
+        # TODO: evaluating not doing this, since we should never have zero second intervals
+        # at this point
+        # kwargs_speed_fix = {
+        #     col_name+'_speed_next': lambda x: x[col_name+'_speed_next'].replace([np.nan], 0)
+        # }
+        
+        rawnav = (
+            rawnav
+            .assign(
+                **kwargs_speed 
+            )
+            # see comment above
+            # .assign(
+            #     **kwargs_speed_fix
+            # )
+        )
+        
+        # if you're the last row , we reset you back to np.nan
+        rawnav.loc[
+            rawnav
+            .groupby(['filename', 'index_run_start'])
+            .tail(1)
+            .index, 
+            col_name+'_speed_next'
+        ] = np.nan
+
+    # for backwards compatibility, we will rename some things if present
+    rawnav = (
+        rawnav
+        .rename(
+            columns = {
+                "odom_ft_speed_next" : "fps_next",
+                "sec_past_st_marg" : "secs_marg"
+            }
         )
     )
-        
-    # if you're the last row , we reset you back to np.nan
-    rawnav.loc[rawnav.groupby(['filename','index_run_start']).tail(1).index, 'fps_next'] = np.nan
 
     return(rawnav)
     
@@ -1559,6 +1603,7 @@ def calc_accel_jerk(rawnav, groupvars = ['filename','index_run_start'], fps_col 
     
     #### Calculate Jerk
     # TODO: some of these names are quite unforuntate...
+    # TODO: update to include heading potentially later
     rawnav[['accel_next_lag']] = (
         rawnav
         .groupby(groupvars, sort = False)[['accel_next']]
@@ -1674,7 +1719,7 @@ def savitzky_golay(y, window_size, order, deriv=0, rate=1):
     y = np.concatenate((firstvals, y, lastvals))
     return np.convolve( m[::-1], y, mode='valid')
 
-def expand_rawnav(rawnav_ti):
+def expand_rawnav(rawnav_ti, cols_to_smooth):
     """
     Expand rawnav timestamp data to cover full extent of trip instance.
     
@@ -1711,23 +1756,21 @@ def expand_rawnav(rawnav_ti):
     # Usually if you have this problem we still have to do other error handling later, 
     # however.
     if (rawnav_ti_expand.shape == (0,1)):
-        rawnav_ti_expand = rawnav_ti[['sec_past_st','fps_next']]
+        rawnav_ti_expand = rawnav_ti[['sec_past_st'] + cols_to_smooth]
     else:
         rawnav_ti_expand = (
             rawnav_ti_expand
             .merge(
-                 rawnav_ti[['sec_past_st','fps_next']],
+                 rawnav_ti[['sec_past_st'] + cols_to_smooth],
                  on = 'sec_past_st',
                  how = 'left'
             )
-            .assign(
-                fps_next = lambda x: x.fps_next.ffill(),
-            )
+            .ffill()
         )
     
     return(rawnav_ti_expand)
 
-def apply_smooth(rawnav_ti):
+def apply_smooth(rawnav_ti, cols_to_smooth):
     """
     Apply smoothing functions.
     
@@ -1748,54 +1791,50 @@ def apply_smooth(rawnav_ti):
         'smooth_speed')
 
     """
-    rawnav_ex = expand_rawnav(rawnav_ti)
-    
+    rawnav_ex = expand_rawnav(rawnav_ti, cols_to_smooth)
+
     try:
         # this can error on very short data frames where interpolation can't take place
-        rawnav_ex['fps_next_sm'] = savitzky_golay(rawnav_ex.fps_next.to_numpy(), 21, 3)    
+        for smooth_col in cols_to_smooth:
+            window_size = (
+                np.select(
+                    [
+                        smooth_col == "heading"
+                    ],
+                    [
+                       11
+                    ],
+                    default = 21
+                )
+            )
+            
+            rawnav_ex[smooth_col+"_sm"] = (
+                savitzky_golay(rawnav_ex[smooth_col].to_numpy(), window_size, 3)
+            )
+            
+            # cheating a little -- apparently we don't want to do this for heading
+            if smooth_col == "fps_next":
+                rawnav_ex = (
+                    rawnav_ex
+                    .assign(
+                        fps_next_sm = lambda x: np.where(
+                            x.fps_next_sm.le(0),
+                            0,
+                            x.fps_next_sm
+                        )    
+                    )    
+                )
+        
     except:
-        # where interpolation fails, we just return the original values
-        rawnav_ex['fps_next_sm'] = rawnav_ex['fps_next']
-    
-    rawnav_ex = (
-        rawnav_ex
-        .assign(
-            fps_next_sm = lambda x: np.where(
-                x.fps_next_sm.le(0),
-                0,
-                x.fps_next_sm
-            )    
-        )    
-    )
-    
-    # I'm not sure this is really the best place to do this, but we could pull out into a separate
-    # function call at a higher level.
-    rawnav_ex = (
-        rawnav_ex
-        # a little hack to shortcut the need to group, since we're doing all this by trip 
-        # instance. This is probably another reminder 
-        .assign(grp = 1)
-        .pipe(
-            calc_accel_jerk,
-            groupvars = ['grp'], 
-            fps_col = 'fps_next_sm'
-        )
-        .drop(['grp'], axis = 'columns')
-    )
+        for smooth_col in cols_to_smooth:
+            # where interpolation fails for any, we just return the original values
+            rawnav_ex[smooth_col + "_sm"] = rawnav_ex[smooth_col]
         
     rawnav_ti = pd.merge(
-        rawnav_ti
-        # drop the placeholder columns
-        .drop(
-            ['fps_next_sm',
-             'accel_next',
-             'jerk_next'
-             ],
-            axis = 'columns'
-        ),
+        rawnav_ti,
         rawnav_ex
         .drop(
-            ['fps_next'],
+            cols_to_smooth,
             axis = "columns"
         ),
         on = ['sec_past_st'],
@@ -1826,17 +1865,14 @@ def smooth_speed(rawnav):
             the current and next ping.
 
     """
+    
+    cols_to_smooth = ['fps_next', 'heading_speed_next']
+    
     rawnav = (
         rawnav
-        .assign(
-            # i'm not sure if these placeholders are necessary or not
-            fps_next_sm = np.nan,
-            accel_next = np.nan,
-            jerk_next = np.nan
-        )
         .groupby(['filename','index_run_start'],sort = False)
         .apply(
-            lambda x: apply_smooth(x)
+            lambda x: apply_smooth(x, cols_to_smooth)
         )
         # i'm not sure how the index changes, but oh well
         .reset_index(drop = True)

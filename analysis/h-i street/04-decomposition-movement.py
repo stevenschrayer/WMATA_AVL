@@ -68,6 +68,8 @@ for analysis_route in analysis_routes:
     stop_index = (
         pq.read_table(
             source=os.path.join(path_processed_data, "stop_index_nomm_hi.parquet"),
+            # note, sometimes 'analysis_route' must be wrapped in int() if you've only
+            # processed routes without characters in the name.
             filters=[('route', '=', analysis_route)],
             use_pandas_metadata=True
         )
@@ -79,8 +81,10 @@ for analysis_route in analysis_routes:
         .rename(columns={'odom_ft': 'odom_ft_stop'})
         .reset_index()
     )
-
     #### Start decomposition
+    # Update Accel field
+    print('accel recalc')
+    rawnav_route = wr.reset_heading(rawnav_route)
     # aggregate so we only have one observation for each second
     print('agg')
     rawnav_route = wr.agg_sec(rawnav_route)
@@ -90,21 +94,32 @@ for analysis_route in analysis_routes:
     print('smooth speed')
     # this includes calculating the accel and such based on smoothed speed values
     rawnav_route = wr.smooth_speed(rawnav_route)
+    print('calc accel jerk')
+    rawnav_route = wr.calc_accel_jerk(rawnav_route, fps_col = 'fps_next_sm')
     print('calc rolling')
-    rawnav_route = wr.calc_rolling(rawnav_route, ['filename', 'index_run_start'])
+    rawnav_route = wr.calc_rolling(rawnav_route)
     # Add in the decomposition
-    print('decompose basic')
+    print('decompose basic and stop')
 
     rawnav_route = (
-        rawnav_route
-        .pipe(
-            wr.decompose_mov,
+        wr.decompose_mov(
+            rawnav_route,
             stopped_fps=3,  # upped from 2
             slow_fps=14.67,  # upped default to 10mph, in fps
             steady_accel_thresh=2  # based on some casual observations, fps2
         )
     )
-
+    
+    print('decompose heading')
+    rawnav_route = (
+        wr.decompose_heading(
+            rawnav_route,
+            # note: this is a little different from the original
+            speed_col = "heading_speed_next_sm",
+            heading_col = "heading"
+        )
+    )
+    
     # Identify the stops in the decomp
     print('match stops')
     # NOTE: this can drop trips entirely in some cases if there are no matched
@@ -130,23 +145,23 @@ for analysis_route in analysis_routes:
     ##### Export Data
     print('export')
     # Write Index Table
-    # shutil.rmtree(
-    #     os.path.join(
-    #         path_decomp,
-    #         "route={}".format(analysis_route)
-    #     ),
-    #     ignore_errors=True
-    # )
+    shutil.rmtree(
+        os.path.join(
+            path_decomp,
+            "route={}".format(analysis_route)
+        ),
+        ignore_errors=True
+    )
 
-    # pq.write_to_dataset(
-    #     table=(
-    #         pa.Table.from_pandas(
-    #             rawnav_route,
-    #             # this may be unnecessary--found a few issues at end where arrow would
-    #             # try to convert objects to other types if i didn't explicitly cast
-    #             schema=pa.Schema.from_pandas(rawnav_route)
-    #         )
-    #     ),
-    #     root_path=path_decomp,
-    #     partition_cols=['route']
-    # )
+    pq.write_to_dataset(
+        table=(
+            pa.Table.from_pandas(
+                rawnav_route,
+                # this may be unnecessary--found a few issues at end where arrow would
+                # try to convert objects to other types if i didn't explicitly cast
+                schema=pa.Schema.from_pandas(rawnav_route)
+            )
+        ),
+        root_path=path_decomp,
+        partition_cols=['route']
+    )
