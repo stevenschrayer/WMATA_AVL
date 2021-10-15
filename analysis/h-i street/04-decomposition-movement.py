@@ -41,7 +41,7 @@ wmata_crs = 2248
 
 
 # Make Output Directory
-path_decomp = os.path.join(path_processed_data, "decomp_match_hi.parquet")
+path_decomp = os.path.join(path_processed_data, "decomp_nomm_hi.parquet")
 
 if not os.path.isdir(path_decomp):
     os.mkdir(path_decomp)
@@ -51,7 +51,7 @@ for analysis_route in analysis_routes:
     #### Reload the data
     rawnav_route = (
         pq.read_table(
-            source=os.path.join(path_processed_data, "rawnav_matched_hi.parquet"),
+            source=os.path.join(path_processed_data, "rawnav_data_hi.parquet"),
             filters=[('route', '=', analysis_route)],
             use_pandas_metadata=True
         )
@@ -67,21 +67,8 @@ for analysis_route in analysis_routes:
     # Load the stop data
     stop_index = (
         pq.read_table(
-            source=os.path.join(path_processed_data, "stop_index_matched_hi.parquet"),
+            source=os.path.join(path_processed_data, "stop_index_nomm_hi.parquet"),
             filters=[('route', '=', analysis_route)],
-            columns=[
-                'route',
-                'pattern',
-                'direction',  # same as pattern_name_wmata_schedule
-                'stop_id',
-                'stop_sequence',
-                'filename',
-                'index_run_start',
-                'index_loc',
-                'odom_ft',
-                'sec_past_st',
-                'geo_description'
-            ],
             use_pandas_metadata=True
         )
         .to_pandas()
@@ -97,8 +84,7 @@ for analysis_route in analysis_routes:
     # aggregate so we only have one observation for each second
     print('agg')
     rawnav_route = wr.agg_sec(rawnav_route)
-    print('interp')
-    # rawnav_route = wr.interp_over_sec(rawnav_route)
+    # Note: we now skip the interpolation step
     print('calc speed')
     rawnav_route = wr.calc_speed(rawnav_route)
     print('smooth speed')
@@ -139,40 +125,28 @@ for analysis_route in analysis_routes:
     )
 
     # Reset odometer
-    print('reset odom')
-    # for now, i'm ditching this until we can think about what htis means in
-    # light of map matching
-    # rawnav_route = (
-    #     rawnav_route
-    #     .groupby(['filename','index_run_start'])
-    #     # reset odometer to be zero at second stop in order in the pattern
-    #     # note that if you don't have a second stop, you just get ditched.
-    #     # picking one a little ways into trip, since even first or second stop may be missing
-    #     # TODO: may revisit this in light of the fact that we now mapmatch
-    #     .apply(lambda x: wr.reset_odom(x, indicator_val = 6, indicator_var = 'stop_sequence_loc'))
-    #     .reset_index(drop = True)
-    # )
+    # note: we now skip odom reset
 
     ##### Export Data
     print('export')
     # Write Index Table
-    shutil.rmtree(
-        os.path.join(
-            path_decomp,
-            "route={}".format(analysis_route)
-        ),
-        ignore_errors=True
-    )
+    # shutil.rmtree(
+    #     os.path.join(
+    #         path_decomp,
+    #         "route={}".format(analysis_route)
+    #     ),
+    #     ignore_errors=True
+    # )
 
-    pq.write_to_dataset(
-        table=(
-            pa.Table.from_pandas(
-                rawnav_route,
-                # this may be unnecessary--found a few issues at end where arrow would
-                # try to convert objects to other types if i didn't explicitly cast
-                schema=pa.Schema.from_pandas(rawnav_route)
-            )
-        ),
-        root_path=path_decomp,
-        partition_cols=['route']
-    )
+    # pq.write_to_dataset(
+    #     table=(
+    #         pa.Table.from_pandas(
+    #             rawnav_route,
+    #             # this may be unnecessary--found a few issues at end where arrow would
+    #             # try to convert objects to other types if i didn't explicitly cast
+    #             schema=pa.Schema.from_pandas(rawnav_route)
+    #         )
+    #     ),
+    #     root_path=path_decomp,
+    #     partition_cols=['route']
+    # )

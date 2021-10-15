@@ -589,9 +589,9 @@ def trim_ends(
     last_idx = (
         rawnav_ti
         .loc[rawnav_ti.stop_id_group_ext.notna() | rawnav_ti.stop_id_loc.notna()]
-        .last_valid_index()
+        .last_valid_index() + 1
     )    
-    
+
     rawnav_ti = (
         rawnav_ti
         .loc[first_idx:last_idx]    

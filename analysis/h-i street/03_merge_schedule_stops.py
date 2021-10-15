@@ -134,7 +134,7 @@ wmata_schedule_versions = (
     )
 )
 # Make Output Directory
-path_stop_index = os.path.join(path_processed_data, "stop_index_matched_hi.parquet")
+path_stop_index = os.path.join(path_processed_data, "stop_index_nomm_hi.parquet")
 
 if not os.path.isdir(path_stop_index):
     os.mkdir(path_stop_index)
@@ -161,7 +161,7 @@ for analysis_route in analysis_routes:
 
         rawnav_route = (
             pq.read_table(
-                source=os.path.join(path_processed_data, "rawnav_matched_hi.parquet"),
+                source=os.path.join(path_processed_data, "rawnav_data_hi.parquet"),
                 filters=[('route', '=', analysis_route)],
                 use_pandas_metadata=True
             )
@@ -184,8 +184,7 @@ for analysis_route in analysis_routes:
         rawnav_route_gdf = (
             gpd.GeoDataFrame(
                 rawnav_route,
-                # note we're using the matched points here
-                geometry=gpd.points_from_xy(rawnav_route.longmatch, rawnav_route.latmatch),
+                geometry=gpd.points_from_xy(rawnav_route.long, rawnav_route.lat),
                 crs='EPSG:4326'
             )
             .to_crs(epsg=wmata_crs)
@@ -233,9 +232,23 @@ for analysis_route in analysis_routes:
     )
 
     stop_index = wr.drop_geometry(stop_index)
-
     pq.write_to_dataset(
-        table=pa.Table.from_pandas(stop_index),
+        table=pa.Table.from_pandas(
+            df=stop_index,
+            schema = pa.schema([
+                pa.field('route', pa.string()),
+                pa.field('pattern', pa.int64()),
+                pa.field('direction', pa.string()),
+                pa.field('stop_id', pa.int64()),
+                pa.field('stop_sequence', pa.int64()),
+                pa.field('filename', pa.string()),
+                pa.field('index_run_start', pa.float64()),
+                pa.field('index_loc', pa.float64()),
+                pa.field('odom_ft', pa.float64()),
+                pa.field('sec_past_st', pa.float64()),
+                pa.field('geo_description', pa.string())
+            ])
+        ),
         root_path=path_stop_index,
         partition_cols=['route']
     )
