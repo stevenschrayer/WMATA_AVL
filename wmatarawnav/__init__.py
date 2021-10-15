@@ -8,3 +8,4 @@ from .decompose_metrotransit import *
 from .visualize_decomposition import *
 from .decompose_movement import *
 from .parse_rawnav_simple import *
+from .decompose_heading import *

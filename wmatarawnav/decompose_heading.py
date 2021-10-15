@@ -9,7 +9,6 @@ Created on Wed Sep 29 13:01:57 2021
 import pandas as pd
 import numpy as np
 
-
 # Reset heading so it doesn't wrap around at 0/360 degrees
 def reset_heading(rawnav):
     # The idea here is to make the difference in between heading values always
