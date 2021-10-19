@@ -1,0 +1,274 @@
+---
+title: "Movement Explore for Presentation"
+output: html_notebook
+---
+
+```{r include=FALSE}
+source('99-movement-explore-setup.R', local = TRUE)
+```
+All examples in this notebook are for a 10AM Friday 30N 
+
+# Data Loads
+```{r}
+# this is the original with data issues
+rawnav_1 <-
+  load_rawnav(
+        file.path(path_data,"testcheckold.csv")
+  ) %>%
+  cleanup_things()
+
+# not quite the latest and greatest, but close
+rawnav_decomp <- 
+  load_rawnav(
+        file.path(path_data,"test_decomp_mov9.csv")
+  ) %>%
+  cleanup_things()
+
+rawnav_decomp_all <- 
+  load_rawnav(
+    file.path(path_data,"test_decomp_mov9_all.csv")
+  ) %>%
+  cleanup_things()
+
+```
+
+# Figures
+Raw data
+```{r, fig.width=6, fig.height=4}
+ping_raw <- plot_rawnav(rawnav_1, fps_next, odom_min = 13577, odom_max = 14201)
+```
+after aggregation and interpolation
+```{r, fig.width=6, fig.height=4}
+ping_fixed <- plot_rawnav(rawnav_decomp, fps_next, odom_min = 13577, odom_max = 14201)
+```
+
+```{r}
+subplot(
+  ping_raw,
+  ping_fixed
+)
+```
+
+
+
+Accel graphs
+
+```{r, fig.width=6, fig.height=4}
+plot_fps_1 <- plot_rawnav(rawnav_decomp,fps3, odom_min = 28069, odom_max = 29074)
+
+thebreaks2 <- c(-46, -14, -6.5, -2, 2, 6.5, 14, 46)
+
+plot_accel_1 <- 
+  rawnav_decomp %>%
+  mutate(
+    accel_next_bin = 
+      base::cut(
+        accel9,
+        breaks = thebreaks2,
+        include.lowest = TRUE,
+        ordered_result = TRUE
+      )
+  ) %>%
+  plot_rawnav(.,accel_next_bin, odom_min = 28069, odom_max = 29074)
+
+subplot(plot_fps_1,plot_accel_1)
+```
+
+```{r}
+  plot_rawnav(rawnav_decomp, var = basic_decomp, odom_min = 28069, odom_max = 29074)
+```
+More examples
+```{r, fig.width=6, fig.height=4}
+plot_rawnav(rawnav_decomp,basic_decomp, odom_min = 5348, odom_max = 6123)
+```
+
+```{r, fig.width=6, fig.height=4}
+plot_rawnav(rawnav_decomp, basic_decomp, odom_min = 29630, odom_max = 32099)
+```
+
+```{r, fig.width=6, fig.height=4}
+
+rawnav_decomp_trips <-
+  rawnav_decomp_all %>%
+  distinct(
+    thegroup,
+    route_pattern,
+    pattern,
+    route,
+    wday,
+    start_date_time
+  )
+
+# 817, 1117, 1217
+
+keep_groups <- c(
+  # "rawnav06490210205.txt-3488",
+  "rawnav07220210205.txt-3197",
+  # "rawnav07232210205.txt-3866",
+  "rawnav06539210205.txt-8606",
+  "rawnav07173210205.txt-8873"
+)
+rawnav_decomp_all_fil <-
+  rawnav_decomp_all %>%
+  filter(
+    thegroup %in% keep_groups
+  )
+
+plot_rawnav(rawnav_decomp_all_fil,
+            basic_decomp,
+            odom_min = 11000,
+            odom_max = 15500)
+```
+
+Chart of three trips
+```{r}
+# 14005 is max
+chart_data <-
+  rawnav_decomp_all_fil %>%
+  filter(
+    odom_ft < 14005
+  ) %>%
+  group_by(
+    start_date_time = format(start_date_time,"%H:%M"),
+    basic_decomp
+  ) %>%
+  summarize(
+    secs_marg = sum(secs_marg, na.rm = TRUE)
+  ) 
+```
+
+```{r, fig.width=6, fig.height=4}
+g <- 
+chart_data %>%
+  ggplot() +
+  geom_col(
+    aes(
+      x = start_date_time,
+      y = secs_marg,
+      fill = basic_decomp
+    )
+  ) +
+  scale_fill_manual(
+    values = c(
+      # based on brewer qualitative set 3
+      "steady" = "#80b1d3",
+      "decel" = "#ffffb3",
+      "stopped_pax" = "#fb8072",
+      "stopped_nopax" = "#fdb462",
+      "accel" = "#8dd3c7",
+      "other_delay" = "#bebada"
+    )
+  ) +
+  scale_y_continuous(
+    name = "Total Seconds",
+    labels = scales::comma
+  ) + 
+  xlab("Trip Instance") +
+  guides(
+    fill = guide_legend(title = "Legend")
+  ) +
+  theme_minimal()
+
+# g
+ggplotly(g)
+```
+
+
+```{r}
+# 14005 is max
+rawnav_decomp_fit <-
+  rawnav_decomp_all %>%
+  group_by(filename,index_run_start) %>%
+  filter(
+    any(
+      (basic_decomp %in% c("stopped_pax","stopped_nopax")) &
+        # make sure bus stopped at newark around this point
+        (odom_ft < 11000) & 
+        (odom_ft > 10924)
+    ) &
+         any(
+      (basic_decomp %in% c("stopped_pax","stopped_nopax")) & 
+        (odom_ft < 5340) & 
+        (odom_ft > 5290)
+    )
+  ) %>%
+  filter(
+    # wisconsin corridor
+    odom_ft < 14000
+  ) %>%
+  ungroup()
+```
+
+```{r}
+odom_chart <-
+  function(
+    df,
+    cut_width
+  ){
+    cuts <- seq(0,14000,by = cut_width)
+    
+    chart_data_2 <-
+      df %>%
+      mutate(
+        odom_bin = 
+          base::cut(
+            odom_ft,
+            breaks = cuts,
+            labels = cuts[2:length(cuts)] / 1000,
+            include.lowest = TRUE,
+            ordered_result = TRUE
+          )
+      ) %>%
+      group_by(
+        odom_bin, basic_decomp
+      ) %>%
+      summarize(
+        secs_marg = sum(secs_marg, na.rm = TRUE)
+      )
+    
+    chart_data_2 %>%
+      ggplot() +
+      geom_col(
+        aes(
+          x = odom_bin,
+          y = secs_marg,
+          fill = basic_decomp
+        )
+      ) +
+      scale_fill_manual(
+        values = c(
+          # based on brewer qualitative set 3
+          "steady" = "#80b1d3",
+          "decel" = "#ffffb3",
+          "stopped_pax" = "#fb8072",
+          "stopped_nopax" = "#fdb462",
+          "accel" = "#8dd3c7",
+          "other_delay" = "#bebada"
+        )
+      ) +
+      scale_y_continuous(
+        name = "Total Seconds",
+        labels = scales::comma
+      ) + 
+      scale_x_discrete(
+        name = paste0("Distance Bin (",cut_width,"'s of feet)")
+      ) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+ 
+      guides(
+        fill = guide_legend(title = "Legend")
+      )
+  }
+
+
+```
+
+```{r, fig.width=6, fig.height=4}
+odom_chart(rawnav_decomp_fit,1000) %>% ggplotly()
+
+```
+
+
+```{r}
+odom_chart(rawnav_decomp_fit,100)
+```

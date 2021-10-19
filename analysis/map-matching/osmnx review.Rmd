@@ -1,0 +1,167 @@
+---
+title: "OSMnx approach"
+output: 
+  html_notebook:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(sf)
+library(mapview)
+options(scipen = 999)
+path_sp <- "C:/OD/Foursquare ITP/Projects - WMATA Datamart"
+crs_wmata <- 6488L #maryladn
+
+path_geo <- file.path(path_sp,"Task 3 - Bus Priority/Data/02-Processed/30N02_bus_net_intersection_link")
+```
+
+
+## Create route geometry.
+### For each route, get shape coordinates from GTFS to construct route points. Find nearest OSM nodes to each route point and record their distances. (*_route_pts).
+
+Note, seems like the geometry should be densified before doing this, maybe it is. Again, you could also just use valhalla to match directly to the processed OSM shape instead of finding nearest node, etc.
+```{r, fig.width = 8.5, fig.height = 7}
+route_pts <-
+  read_sf(
+    file.path(path_geo,"30N02_route_pts.geojson")
+  )
+
+mapview(route_pts, zcol = "node_dist")
+```
+
+
+### Get from-shape and to-shape to construct route lines. (*_route_line)
+
+```{r, fig.width = 8.5, fig.height = 7}
+route_line <-
+  read_sf(
+    file.path(path_geo,"30N02_route_line.geojson")
+  )
+
+mapview(route_line, zcol = "PT_SEQUENC")
+
+```
+
+## Get stop sequences from GTFS. (*_stop_seq)
+
+What happens to these next?
+```{r, fig.width = 8.5, fig.height = 7}
+stop_seq <-
+  read_sf(
+    file.path(path_geo,"30N02_stop_seq.geojson")
+  )
+
+mapview(stop_seq, zcol = "STOPSORTORDER")
+
+```
+
+## Create a 15 meters buffer around the route line geometry. (*_route_buffer)
+this is probably fine if you do it just for each route shape, but would start to get expensive on rawnav
+```{r, fig.width = 8.5, fig.height = 7}
+route_buff <-
+  read_sf(
+    file.path(path_geo,"30N02_route_buffer.geojson")
+  )
+
+mapview(route_buff, zcol = "idx")
+```
+
+
+## Create sub-graph and using route buffer and get sub-edges. (*clean_G_sub_edges)
+ooh boy, this is is a bit nasty
+```{r, fig.width = 8.5, fig.height = 7}
+clean_g_sub_edges <-
+  read_sf(
+    file.path(path_geo,"30N02_clean_G_sub_edges.geojson")
+  )
+
+mapview(clean_g_sub_edges, zcol = "osmid_str", legend = FALSE)
+```
+
+### Create a sub-node dataframe for future use. (*_G_sub_nodes)
+
+```{r, fig.width = 8.5, fig.height = 7}
+clean_g_sub_nodes <-
+  read_sf(
+    file.path(path_geo,"30N02_G_sub_nodes.geojson")
+  )
+
+mapview(clean_g_sub_nodes, zcol = "osmid", legend = FALSE)
+```
+
+
+## Clip sub-graph using route buffer and get clipped edges. (*_clean_G_hardclip_edges)
+```{r, fig.width = 8.5, fig.height = 7}
+clean_G_hardclip_edges <-
+  read_sf(
+    file.path(path_geo,"30N02_clean_G_hardclip_edges.geojson")
+  )
+
+mapview(clean_G_hardclip_edges, zcol = "osmid_str", legend = FALSE)
+```
+
+### Get clipped nodes inside the buffer. (*_G_hardclip_nodes)
+```{r, fig.width = 8.5, fig.height = 7}
+G_hardclip_nodes <-
+  read_sf(
+    file.path(path_geo,"30N02_G_hardclip_nodes.geojson")
+  )
+
+mapview(G_hardclip_nodes, zcol = "osmid", legend = FALSE)
+```
+
+## For each stop sequence, find nearest node in sub-graph.
+### Create from-/to-nodes, stop IDs, sequence and find nearest OSM node to each stop. (*_stop_seq_extrainfo)
+```{r, fig.width = 8.5, fig.height = 7}
+stop_seq_extrainfo <-
+  read_sf(
+    file.path(path_geo,"30N02_stop_seq_extrainfo.geojson")
+  )
+
+mapview(stop_seq_extrainfo, zcol = "nearest_node", legend = FALSE)
+```
+
+### Get the shortest path between from-nodes and to-nodes (would give the actual route shape constructed using OSM).
+no intermediate shapes here
+### Explode the path to get all nodes between each pair of from-node and-to node.
+no intermediate shapes here
+
+
+### Merge clipped edges to this data (_bus_net_intersection_link) & (_full_path_btw_stops).
+
+```{r}
+bus_net_intersection_link <-
+  read_csv(
+    file.path(path_geo,"30N02_bus_net_intersection_link.csv"),
+    col_types = cols(
+      PATTERN_ID = col_character(),
+      from_geoid = col_double(),
+      from_stop_seq = col_double(),
+      to_stop_seq = col_double(),
+      to_geoid = col_double(),
+      from_node = col_double(),
+      to_node = col_double(),
+      link_code = col_character(),
+      edge_code = col_character()
+    )
+  )
+
+bus_net_intersection_link
+```
+
+This is the output. 
+```{r, fig.width = 8.5, fig.height = 7}
+full_path_btw_stops <-
+  read_sf(
+    file.path(path_geo,"30N02_full_path_btw_stops.geojson")
+  ) %>%
+  mutate(
+    from_geoid = fct_inorder(from_geoid),
+    from_geoid = fct_shuffle(from_geoid)
+  )
+
+mapview(full_path_btw_stops, zcol = "from_geoid", legend = FALSE)
+```

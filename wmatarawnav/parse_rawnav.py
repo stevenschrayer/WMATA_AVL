@@ -190,13 +190,12 @@ def clean_rawnav_data(data_dict, filename):
     -------
     Cleaned data without any tags.
     '''
-    
-    rawnavdata = data_dict['RawData']
-    tagline_data = data_dict['tagLineInfo']
+    rawnavdata = data_dict['RawData'].copy(deep = True)
+    tagline_data = data_dict['tagLineInfo'].copy(deep = True)
 
     # Check the location of taglines from tagline_data data match the locations in rawnavdata
     try:
-        temp = tagline_data.new_line_no.values.flatten()
+        temp = tagline_data.new_line_no.values
         tag_indices = np.delete(temp, np.where(temp == -1))
         # Essentially, we reconstitute the tags in the file from the separated columns in rawnavdata and 
         #   make sure that they all match the separate tag data that came from the rawnav_inventory
@@ -212,16 +211,13 @@ def clean_rawnav_data(data_dict, filename):
     except:
         print("TagLists Did not match in file {}".format(filename))
     
-    rawnavdata.reset_index(inplace=True);
-    # TODO: This line prevents the function from being rerun, need to address later.
-    #   odd, given local scoping of functions 
-    # IS okay on a first run though
+    rawnavdata.reset_index(inplace=True)
     rawnavdata.rename(columns={"index": "index_loc"}, inplace=True)
     
     # Get End of route Info
     tagline_data, delete_indices1 = add_end_route_info(rawnavdata, tagline_data)
     rawnavdata = rawnavdata[~rawnavdata.index.isin(np.append(tag_indices, delete_indices1))]
-   
+    
     # Remove APC and CAL labels and keep APC locations. 
     rawnavdata, apc_tag_loc = remove_apc_cal_tags(rawnavdata)
     rawnavdata = rawnavdata[rawnavdata.apply(check_valid_data_entry, axis=1)]
@@ -270,7 +266,6 @@ def clean_rawnav_data(data_dict, filename):
     return_dict = {'rawnavdata': rawnavdata, 'summary_data': summary_data}
     
     return return_dict
-
 
 def subset_rawnav_run(rawnav_data_dict_, rawnav_inventory_filtered_valid_, analysis_routes_):
     '''
@@ -321,12 +316,33 @@ def add_run_dividers(data, summary_data):
     summary_data.columns
     tags_temp = summary_data[
         ['route_pattern', 'route', 'pattern', 'index_run_start', 'index_run_end']]
-    q1 = '''SELECT data.index_loc,data.lat,data.long,data.heading,data.door_state,data.veh_state,data.odom_ft,
-    data.sec_past_st,data.sat_cnt,data.stop_window,data.blank,data.lat_raw,data.long_raw,data.row_before_apc,
-    tags_temp.route_pattern,tags_temp.route,tags_temp.pattern,tags_temp.index_run_start,
-    tags_temp.index_run_end
-    FROM data LEFT JOIN tags_temp on data.index_loc 
-    BETWEEN  tags_temp.index_run_start and tags_temp.index_run_end
+    q1 = '''
+    SELECT 
+        data.index_loc,
+        data.lat,
+        data.long,
+        data.heading,
+        data.door_state,
+        data.veh_state,
+        data.odom_ft,
+        data.sec_past_st,
+        data.sat_cnt,
+        data.stop_window,
+        data.blank,
+        data.lat_raw,
+        data.long_raw,
+        data.row_before_apc,
+        tags_temp.route_pattern,
+        tags_temp.route,
+        tags_temp.pattern,
+        tags_temp.index_run_start,
+        tags_temp.index_run_end
+    FROM 
+        data 
+    LEFT JOIN 
+        tags_temp ON data.index_loc 
+    BETWEEN 
+        tags_temp.index_run_start AND tags_temp.index_run_end
     '''
     data = ps.sqldf(q1, locals())
     return data
@@ -345,7 +361,6 @@ def get_run_summary(data, tagline_data):
     Summary data : pd.DataFrame
         data with run level summary.
     '''
-
     temp = tagline_data[['index_run_start_original', 'index_run_end_original']]
     temp = temp.astype('int32')
     raw_da_cpy = data[['index_loc', 0, 1, 5, 6]].copy()
@@ -360,7 +375,12 @@ def get_run_summary(data, tagline_data):
                                6: 'sec_past_st'}, 
                       inplace=True)
     # Get rows with run start from raw_da_cpy
-    temp = pd.merge_asof(temp, raw_da_cpy, left_on="index_run_start_original", right_on="index_loc", direction='forward')
+    temp = pd.merge_asof(
+        temp.sort_values(['index_run_start_original']), 
+        raw_da_cpy, 
+        left_on="index_run_start_original", 
+        right_on="index_loc", 
+        direction='forward')
     temp.rename(columns={'lat': "lat_start", 
                          'long': "long_start",
                          'odom_ft': "odom_ft_start", 
@@ -368,7 +388,8 @@ def get_run_summary(data, tagline_data):
                          "index_loc": "index_run_start"},
                 inplace=True)
     # Get rows with run end from raw_da_cpy
-    temp = pd.merge_asof(temp, 
+    temp = pd.merge_asof(temp
+                         .sort_values(['index_run_end_original']), 
                          raw_da_cpy, 
                          left_on="index_run_end_original", 
                          right_on="index_loc", 
@@ -481,16 +502,26 @@ def add_end_route_info(data, tagline_data):
     data.loc[:, 'run_end_time'] = data[0].str.extract(pat)
     end_of_route = data[['index_loc', 'run_end_time']]
     end_of_route = end_of_route[~(end_of_route.run_end_time.isna())]
+    # end_of_Route is a df with the indexes of where end of route info is
     delete_indices = end_of_route.index_loc.values
     end_of_route.rename(columns={'index_loc': 'index_run_end_original'}, inplace=True)
+    # not sure why these conversions are necessary, but indices someitmes come out
+    # as float when you reconvert to columns
     end_of_route.index_run_end_original = end_of_route.index_run_end_original.astype('int32')
     tagline_data.new_line_no = tagline_data.new_line_no.astype('int32')
+    # we look back at the tag list for the file and do a nearest merge. WE're trying to
+    # find the nearest trip start tag in the backwards direction given that we know
+    # where the end tags are. 
+    # some of these will be duplicates
     end_of_route = pd.merge_asof(end_of_route, 
-                                 tagline_data[['tag_time', 'new_line_no']], 
+                                 tagline_data
+                                 .filter(['tag_time', 'new_line_no'], axis = "columns")
+                                 .sort_values('new_line_no'), 
                                  left_on="index_run_end_original",
                                  right_on='new_line_no', 
                                  direction='backward') 
     end_of_route = end_of_route[~(end_of_route.duplicated(subset=['new_line_no', 'tag_time'], keep='first'))]
+    # TODO: should clean out tempLine and tempTime before returning the object
     tagline_data = tagline_data.merge(end_of_route, on=['new_line_no', 'tag_time'], how='left')
     tagline_data.loc[:, 'tempLine'] = tagline_data['new_line_no'].shift(-1)
     tagline_data.loc[:, 'tempTime'] = tagline_data['tag_time'].shift(-1)

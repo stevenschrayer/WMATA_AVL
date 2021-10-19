@@ -1,0 +1,343 @@
+---
+title: "Replicate Existing WMATA Process in Valhalla"
+output: 
+  html_notebook:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+
+Can we replicate the WMATA existing approach using valhalla? Let's see.
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(sf)
+library(mapview)
+library(httr)
+library(gtfsec)
+library(tidytransit)
+library(smoothr)
+options(scipen = 999)
+path_sp <- "C:/OD/Foursquare ITP/Projects - WMATA Datamart"
+
+```
+
+```{r}
+crs_wmata <- 6488L #maryladn
+```
+
+## Load GTFS
+
+Load GTFS files and segment
+```{r}
+gtfs_obj <-
+  tidytransit::read_gtfs(
+    file.path(
+      path_sp,
+      "Task 3 - Bus Priority",
+      "Data",
+      "00-Raw",
+      "wmatabus-20210308-gtfs.zip"
+    )
+  )
+
+# drop to a few routes
+routes_hi <-
+  c('30N','30S','32','33','36','37','39','42','43','G8')
+
+gtfs_obj$routes <- 
+  gtfs_obj$routes %>%
+  filter(route_short_name %in% routes_hi)
+
+gtfs_prep <-
+  prepare_gtfs(
+    gtfs_obj
+  )
+
+```
+
+### Segment
+
+```{r}
+stop_segs <-
+  make_shape_segments(
+    gtfs_prep,
+    crs = crs_wmata,
+    ncores = 6,
+    quiet = FALSE
+  )
+```
+
+```{r, fig.width = 8.5, fig.height = 7}
+stop_segs %>%
+  filter(shape_id == "30N:02") %>%
+  mapview(zcol = "stop_id_start")
+```
+### Densify
+
+Densify segments to include more vertices and improve join
+```{r}
+stop_segs_den <-
+  stop_segs %>%
+  smoothr::densify(max_distance = 100) # in units of crs, 100ft
+```
+
+then explode into points.
+```{r}
+stop_segs_den_exp <-
+  stop_segs_den %>%
+  st_cast("POINT")
+```
+quick check: this indeed looks like maximum 100 ft separation
+```{r, fig.width = 8.5, fig.height = 7}
+{stop_segs_den_exp %>%
+  filter(
+    shape_id == "30N:01"
+  ) %>%
+  mapview(zcol = "stop_id_start")}@map %>%
+  leaflet::addMeasure()
+
+```
+
+## Map Match
+
+### Match vertices with segment data
+
+Create a quickie function to hit the valhalla API
+```{r}
+mapmatch <-
+  function(df){
+    df_proce <-
+      df %>%
+      st_transform(4326L) %>%
+      dplyr::bind_cols(
+        .,
+        as.data.frame(sf::st_coordinates(.,geometry))
+      ) %>%
+      dplyr::rename(
+        'lon' = X,
+        'lat' = Y
+      ) 
+    
+    use_df <-
+      df_proce %>%
+      sf::st_drop_geometry() %>%
+      select(
+        lat,
+        lon
+      )
+    
+    use_data <-
+      list(
+        shape = use_df,
+        costing = "bus",
+        shape_match = "map_snap",
+        directions_options =
+          list(
+            units = "miles",
+            directions_type = "none"
+          ),
+        trace_options.search_radius = 100,
+        trace_options.interpolation_distance = 100,
+        trace_options.turn_penalty_factor = 500
+      )
+    
+    url_base = "http://localhost:8002/trace_attributes"
+    res <-
+      httr::POST(
+        url = url_base,
+        httr::add_headers(
+          "Content-Type" = "application/json"
+        ),
+        body = jsonlite::toJSON(use_data, auto_unbox = TRUE)
+      )
+    
+    cont <- content(res)
+    
+    httr::stop_for_status(res)
+    
+    edges <-
+      cont$edges %>%
+      enframe() %>%
+      unnest_wider(value)  %>%
+      rowwise() %>%
+      mutate(
+        street_names = paste(unlist(names),collapse = ", "),
+        .before = everything()
+      ) %>%
+      ungroup() %>%
+      mutate(
+        edge_index = row_number() - 1,
+        .before = everything()
+      ) %>%
+      select(-end_node, -names) 
+    
+    
+    matched <-
+      cont$matched_points %>%
+      enframe() %>%
+      unnest_wider(value) %>%
+      rename(
+        lonmatch = lon,
+        latmatch = lat
+      )
+    
+    df_out <-
+      df_proce %>%
+      bind_cols(
+        matched
+      ) %>%
+      left_join(
+        edges,
+        by = c("edge_index")
+      ) %>%
+      st_as_sf(
+        .,
+        coords = c("lonmatch", "lat"),
+        crs = 4326L, #WGS84
+        agr = "constant",
+        remove = FALSE
+      )
+    
+    return(df_out)
+  }
+```
+
+Process for H&I corridor stops
+```{r}
+match_segs_out <-
+  stop_segs_den_exp %>%
+  group_by(shape_id) %>%
+  group_map(~mapmatch(.x),.keep = TRUE) %>%
+  reduce(bind_rows)
+```
+
+```{r}
+match_segs_out %>%
+  filter(shape_id == "30N:02")
+```
+
+
+### Aggregate
+
+Replicate teh final output from earlier code, aggregating to unique combinations of :
+
+* shape_id/pattern
+* segment sequence start and end
+* stop sequence start and end
+* edges (a little different since meili creates bidirectional ids differently)
+
+```{r}
+
+duper <- function(col){
+  if_else(dplyr::lead({{col}}) != {{col}},dplyr::lead({{col}}),{{col}})
+}
+
+match30Nseg_osmnx <-
+  match_segs_out %>%
+  filter(
+    shape_id == "30N:02"
+  ) %>%
+  st_drop_geometry() %>%
+  select(
+    shape_id,
+    seg_start,
+    seg_end,
+    stop_id_start,
+    stop_id_end,
+    id,
+    way_id,
+    latmatch,
+    lonmatch
+  ) %>%
+  group_by(
+    seg_start,
+    seg_end,
+    stop_id_start,
+    stop_id_end,
+    id,
+    way_id,
+  ) %>%
+  mutate(
+    n = if_else(row_number() == n(),2,1) 
+  ) %>%
+  uncount(weights = n, .remove = FALSE) %>%
+  ungroup() %>%
+  group_by(
+    shape_id,
+  ) %>%
+  mutate(
+    across(
+      c(
+      seg_start,
+      seg_end,
+      stop_id_start,
+      stop_id_end,
+      id,
+      way_id
+      ),
+      ~ duper(.x)
+    )
+  ) %>%
+  ungroup() %>%
+  st_as_sf(
+    .,
+    coords = c("lonmatch", "latmatch"),
+    crs = 4326L, #WGS84
+    agr = "constant",
+    remove = FALSE
+  ) %>%
+  group_by(
+    shape_id,
+    seg_start,
+    seg_end,
+    stop_id_start,
+    stop_id_end,
+    id,
+    way_id,
+  ) %>% 
+  summarize(do_union = FALSE, .groups = "drop") %>%
+  st_cast("LINESTRING")
+```
+
+```{r}
+match30Nseg_osmnx %>%
+  st_drop_geometry() %>%
+  head(20)
+```
+
+
+```{r, fig.width = 8.5, fig.height = 7}
+match30Nseg_osmnx %>%
+  mutate(stop_id_start = fct_inorder(stop_id_start),
+         stop_id_start = fct_shuffle(stop_id_start)) %>%
+  mapview(zcol = 'stop_id_start',lwd = 3 )
+```
+
+```{r include=FALSE}
+
+match_segs_out %>%
+  write_sf(
+    dsn = 
+      file.path(
+        path_sp,
+        "Task 3 - Bus Priority",
+        "Data",
+        "01-Interim",
+        "match_segs_out.geojson"
+      )
+  )
+
+match30Nseg_osmnx %>%
+  write_sf(
+    dsn = 
+      file.path(
+        path_sp,
+        "Task 3 - Bus Priority",
+        "Data",
+        "01-Interim",
+        "match30Nseg_osmnx.geojson"
+      )
+  )
+```
+

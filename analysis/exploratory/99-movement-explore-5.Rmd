@@ -1,0 +1,419 @@
+---
+title: "Movement Explore 5"
+output: html_notebook
+---
+This is the version with an additional requirement on no big accel/decel changes to be in steady state and the .25 threshold
+
+
+# Setup
+```{r include=FALSE}
+library(tidyverse)
+library(sf)
+library(mapview)
+library(plotly)
+
+path_sp <- "C:/OD/Foursquare ITP/Projects - WMATA Datamart"
+
+path_data <-
+  file.path(
+    path_sp,
+    "Task 3 - Bus Priority",
+    "Data",
+    "01-Interim"
+  )
+
+options(scipen = 999)
+
+```
+
+```{r, fig.width=6, fig.height=4}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+Define useful functions
+```{r, fig.width=6, fig.height=4}
+
+load_rawnav <- 
+  function(thepath){
+    suppressWarnings({
+      read_csv(
+        thepath,
+        col_types = cols(
+          X1 = col_double(),
+          index_loc = col_double(),
+          lat = col_double(),
+          long = col_double(),
+          heading = col_double(),
+          door_state = col_character(),
+          veh_state = col_character(),
+          odom_ft = col_double(),
+          sec_past_st = col_double(),
+          sat_cnt = col_double(),
+          stop_window = col_character(),
+          blank = col_double(),
+          lat_raw = col_double(),
+          long_raw = col_double(),
+          row_before_apc = col_double(),
+          route_pattern = col_character(),
+          pattern = col_double(),
+          index_run_start = col_double(),
+          index_run_end = col_double(),
+          filename = col_character(),
+          start_date_time = col_datetime(format = ""),
+          route = col_character(),
+          wday = col_character(),
+          odom_ft_next = col_double(),
+          sec_past_st_next = col_double(),
+          odom_ft_next3 = col_double(),
+          sec_past_st_next3 = col_double(),
+          secs_marg = col_double(),
+          odom_ft_marg = col_double(),
+          fps_next = col_double(),
+          fps_next3 = col_double()
+        )
+      )
+    })
+    
+  }
+
+
+cleanup_things <- function(rawnav){
+  rawnav %>%
+    st_as_sf(
+      ., 
+      coords = c("long", "lat"),
+      crs = 4326L, #WGS84
+      agr = "constant"
+    ) %>%
+    mutate(
+      mins_past_st = sec_past_st / 60,
+      mph_next = fps_next / 1.467,
+      mph_next3 = fps_next3 / 1.467,
+      fps_next_lead = lead(fps_next),
+      fps_next3_lead = lead(fps_next3),
+      accel_next = (fps_next_lead - fps_next) / (sec_past_st_next - sec_past_st),
+      accel_next3 = (fps_next3_lead - fps_next3) / (sec_past_st_next3 - sec_past_st),
+      accel_next = round(accel_next,3),
+      accel_next3 = round(accel_next3,3),
+      accel_mph_next = accel_next / 1.467,
+      accel_mph_next3 = accel_next3 / 1.467
+    )
+}
+
+plot_rawnav <-
+  function(rawnav, var, thetitle = NULL,odom_min = NULL,odom_max = NULL){
+    # setup
+    if (is.null(thetitle)){
+      thetitle = rlang::as_label(enquo(var))
+    }
+    
+    if (is.environment(rawnav)){
+        thedata <- rawnav$data()
+    } else {
+        thedata <- rawnav
+    }
+    
+    varclass <- thedata %>% pull({{var}}) %>% class()
+
+    # Define basic time-space diagram
+    g <- 
+      ggplot(
+        data = rawnav
+      ) +
+      geom_line(
+        aes(
+          y = odom_ft,
+          x = sec_past_st
+        ),
+        color = "grey80"
+      ) +
+      geom_point(
+        aes(
+          color = {{var}},
+          y = odom_ft,
+          x = sec_past_st
+        )
+      ) +
+      xlab("Time Past Trip Start (Seconds)") +
+      ylab("Trip Odometer Distance (Feet)") +
+      theme_minimal()
+
+    # set colors
+    if (all(varclass == "numeric")){
+      g <-
+        g +
+        scale_color_gradient2(
+          low = "#d7191c",
+          mid = "#ffffbf",
+          high = "#1a9641"
+        ) +
+        guides(color=guide_legend(title=thetitle))
+      
+    } else if (rlang::as_label(var) == "basic_decomp"){
+      g <-
+        g +
+        scale_color_manual(
+          values = c(
+            "steady" = "#80b1d3",
+            "decel" = "#ffffb3",
+            "stopped" = "#fb8072",
+            "accel" = "#8dd3c7",
+            "other_delay" = "#bebada"
+          )
+        ) +
+        guides(color=guide_legend(title=thetitle))
+      
+    } else if (any("factor" %in% varclass)) {
+      g <- 
+        g + 
+        scale_color_brewer(
+          type = "div",
+          palette = "RdYlGn",
+          drop = FALSE
+        ) +
+        guides(color=guide_legend(title=thetitle))
+    }
+      
+    # convert to ggplotly
+    gplot <- 
+      ggplotly(
+        g, 
+        dynamicTicks = TRUE, 
+        tooltip = c("x","y","colour","text")
+      ) 
+    
+    # set bounds
+    if (!is.null(odom_min) & !is.null(odom_max)){
+      sec_range <-
+        thedata %>% # because we expect weird thing
+        filter_range(odom_min,odom_max) %>%
+        pull(sec_past_st) %>%
+        range()
+
+      # add a little room
+      inter_sec_range <- sec_range[2] - sec_range[1]
+      sec_range[1] <- sec_range[1] - inter_sec_range * .25
+      sec_range[2] <- sec_range[2] + inter_sec_range * .25
+      
+      # odom _range
+      inter_odom_range <- odom_max - odom_min
+      odom_min <- odom_min - inter_odom_range * .25
+      odom_max <- odom_max + inter_odom_range * .25
+      
+      gplot <-
+        gplot %>%
+        layout(
+          yaxis = 
+            list(
+              range = c(odom_min, odom_max),
+              autorange = FALSE
+            ),
+          xaxis = 
+            list(
+              range = sec_range,
+              autorange = FALSE
+            )
+          )
+    }
+    
+    return(gplot)
+    
+  }
+
+create_divergent_breaks <- function(vec,totn = 9, zero_cat = TRUE){
+  
+  # remove 0's (sometimes better for generating breaks)
+  abs.vec <- 
+  # and set all to positive before calculating
+    vec[vec != 0] %>%
+    na.omit() %>%
+    as.vector() %>%
+    abs()
+  
+  # creating 4 so that we have 3 above mid; could make param
+  # TODO: totn should change here if you have zero_cat = FALSE
+  ints <- classInt::classIntervals(abs.vec, n= (totn/2)-1, style = "jenks")
+  # round top to avoid weird scientific notation, then cut rest to 4 digits
+  ints$brks[length(ints$brks)] <- ceiling(ints$brks[length(ints$brks)])
+  ints$brks <- round(ints$brks,digits = 4)
+  
+  if (any(vec <0) & !all(vec <0)){
+    allbreaks <- sort(c(-ints$brks, ints$brks))
+    
+    if (!zero_cat) {
+      
+      allbreaks <- allbreaks[!base::duplicated(allbreaks)]
+    }
+    
+    allbreaks
+  } else {
+    stop('didnt plan for non zero midpoint case')
+  }
+}
+
+filter_range <- function(df,themin,themax){
+  df <- 
+    df %>%
+  filter(
+    (odom_ft >= themin) & (odom_ft <= themax)
+  ) %>%
+  select(
+    index_loc,
+    odom_ft,
+    sec_past_st,
+    fps_next,
+    accel_next
+  )
+  
+  if (nrow(df) < 2){
+    stop('range of filter values too narrow')
+  }
+  
+  return(df)
+}
+
+plot_rawnav_man <-
+  function(rawnav, var, thetitle = NULL,odom_min = NULL,odom_max = NULL){
+    if (is.null(thetitle)){
+      thetitle = rlang::as_label(enquo(var))
+    }
+    
+    if (is.environment(rawnav)){
+        thedata <- rawnav$data()
+    } else {
+        thedata <- rawnav
+    }
+    
+    varclass <- thedata %>% pull({{var}}) %>% class()
+    suppressWarnings({ # issue with text hack and plotly creates warning
+    g <- 
+      ggplot(
+        data = rawnav
+      ) +
+      geom_line(
+        aes(
+          y = odom_ft,
+          x = sec_past_st
+        ),
+        color = "grey80"
+      ) +
+      geom_point(
+        aes(
+          color = {{var}},
+          y = odom_ft,
+          x = sec_past_st,
+          text = thelabel
+        )
+      ) +
+      xlab("Time Past Trip Start (Seconds)") +
+      ylab("Trip Odometer Distance (Feet)") +
+      theme_minimal()
+    })
+
+      g <-
+        g +
+        scale_color_manual(
+          values = c(
+            "steady" = "#80b1d3",
+            "decel" = "#ffffb3",
+            "stopped" = "#fb8072",
+            "accel" = "#8dd3c7",
+            "other_delay" = "#bebada"
+          )
+        ) +
+        guides(color=guide_legend(title=thetitle))
+    
+    # g
+    gplot <- 
+      ggplotly(g, dynamicTicks = TRUE, tooltip = c("x","y","colour","text")) 
+    
+    if (!is.null(odom_min) & !is.null(odom_max)){
+      sec_range <-
+        thedata %>% # because we expect weird thing
+        filter_range(odom_min,odom_max) %>%
+        pull(sec_past_st) %>%
+        range()
+
+      # add a little room
+      inter_sec_range <- sec_range[2] - sec_range[1]
+      sec_range[1] <- sec_range[1] - inter_sec_range * .25
+      sec_range[2] <- sec_range[2] + inter_sec_range * .25
+      
+      # odom _range
+      inter_odom_range <- odom_max - odom_min
+      odom_min <- odom_min - inter_odom_range * .25
+      odom_max <- odom_max + inter_odom_range * .25
+      
+      gplot <-
+        gplot %>%
+        layout(
+          yaxis = 
+            list(
+              range = c(odom_min, odom_max),
+              autorange = FALSE
+            ),
+          xaxis = 
+            list(
+              range = sec_range,
+              autorange = FALSE
+            )
+          )
+    }
+    
+    return(gplot)
+    
+  } 
+
+
+```
+
+
+
+
+```{r, fig.width=6, fig.height=4}
+rawnav_decomp <-
+  load_rawnav(
+    file.path(path_data,"test_decomp_mov3.csv")
+  ) %>%
+  mutate(
+    thelabel = 
+      paste0(
+        "steady fps: ", round(steady_fps,1),
+        "<br>fps: ", round(fps_next,1),
+        "<br>accel: ",round(accel_next,1)
+      )
+  )
+```
+
+"steady state" is a bit more inconsistent now with the accel requirement added. but now you get teh weird result that you can decel sharply in steady state (getting other_delay), hit a new speed that's still in steady state and go back to steady, then accelerate and go out of steady state again. A little weird.
+```{r, fig.width=6, fig.height=4}
+plot_rawnav_man(rawnav_decomp,basic_decomp, odom_min = 6140, odom_max = 6535)
+```
+
+
+```{r, fig.width=6, fig.height=4}
+plot_rawnav_man(rawnav_decomp, basic_decomp, odom_min = 29630, odom_max = 32475)
+```
+
+```{r, fig.width=6, fig.height=4}
+rawnav_decomp %>%
+  plot_rawnav_man(.,basic_decomp, odom_min = 32114, odom_max = 32475)
+```
+
+```{r, fig.width=6, fig.height=4}
+rawnav_decomp %>%
+  plot_rawnav_man(.,basic_decomp, odom_min = 27336, odom_max = 28031)
+```
+
+```{r, fig.width=6, fig.height=4}
+rawnav_decomp %>%
+  plotly::highlight_key(.,~accel_next) %>%
+  plot_rawnav_man(.,basic_decomp, odom_min = 28069, odom_max = 29074)
+```
+
+```{r, fig.width=6, fig.height=4}
+rawnav_decomp %>%
+  plotly::highlight_key(.,~fps_next) %>%
+  plot_rawnav_man(.,basic_decomp, odom_min = 41225, odom_max = 43655)
+```

@@ -42,9 +42,13 @@ def reorder_first_cols(df,first_cols_list):
     -------
     df: pd.DataFrame
     """
+    # TODO: make this not duplicate columns if you accidentally list twice
     assert(isinstance(first_cols_list, list))
     
-    new_cols_order = first_cols_list + [col for col in df.columns if col not in first_cols_list]
+    # attempting to make it work if you list a column that doesn't exist in data. could be bad.
+    found_cols_list = [col for col in df.columns if col in first_cols_list]
+    
+    new_cols_order = found_cols_list + [col for col in df.columns if col not in found_cols_list]
     
     df = df[new_cols_order]
     
@@ -200,8 +204,50 @@ def semi_join(left,right,on):
     to continuing to do work on a dataframe. This addresses that.
     """
     
+    # This was the old f'n but it was slow as heck
+    # out = (
+    #     left[left[on].agg(tuple,1).isin(right[on].agg(tuple,1))]
+    # )
+    
+    # This is the new approach
+    # does this actually return what i think? If the right has a larger universe of trips 
+    # or whatever, i'm worried it's that that will be returned.
     out = (
-        left[left[on].agg(tuple,1).isin(right[on].agg(tuple,1))]
+        left
+        .merge(
+            right,
+            how = 'inner',
+            on = on,
+            suffixes = ("","_y")
+        )
+        .reindex(left.columns, axis = "columns")
+    )
+
+    return(out)
+
+def anti_join(left,right,on):
+    """
+    # modified from here:
+    # https://gist.github.com/sainathadapa/eb3303975196d15c73bac5b92d8a210f#file-anti_join-py-L1
+    Parameters
+    ----------
+    left : pd.DataFrame,
+        records to keep...
+    right: pd.DataFrame,
+        ...if not present here
+    on: list,
+        list of columns present in both dataframes to filter on
+    Returns
+    -------
+    df : pd.DataFrame,
+        all records of left that are not found in right
+    """
+
+    out = pd.merge(left=left, right=right, how='left', indicator=True, on=on)
+    out = (
+        out
+        .loc[out._merge == 'left_only', :]
+        .reindex(left.columns, axis = "columns")
     )
 
     return(out)
