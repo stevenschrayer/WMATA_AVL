@@ -17,19 +17,16 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from dotenv import dotenv_values
 
-if os.getlogin() == "WylieTimmerman":
-    # Working Paths
-    # the following needed to run in vscode jupyter interpreter
+if os.getlogin() == "JackMcDowell":
     os.environ["GDAL_DATA"] = os.environ["CONDA_PREFIX"] + "\Library\share\gdal"
-    path_working = r"C:\Users\WylieTimmerman\Documents\projects_local\WMATA_AVL_datamart"
+    path_working = r"C:\OD\OneDrive - Foursquare ITP\Documents\0002 R\WMATA Datamart\WMATA_AVL"
     os.chdir(os.path.join(path_working))
-    sys.path.append(r"C:\Users\WylieTimmerman\Documents\projects_local\WMATA_AVL_datamart")
+    sys.path.append(r"C:\OD\OneDrive - Foursquare ITP\Documents\0002 R\WMATA Datamart\WMATA_AVL")
     path_sp = r"C:\OD\Foursquare ITP\Projects - WMATA Datamart\Task 3 - Bus Priority"
-    path_source_data = os.path.join(path_sp, "data", "00-Raw")
-    path_processed_data = os.path.join(path_sp, "Data", "02-Processed")
+    path_source_data = os.path.join(path_sp,"Data","00-Raw")
+    path_processed_data = os.path.join(path_sp, "Data","02-Processed")
     # Server credentials
     config = dotenv_values(os.path.join(path_working, '.env'))
-    # other things for wylie's dev environment
 
 import wmatarawnav as wr
 
