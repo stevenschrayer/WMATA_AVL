@@ -165,19 +165,88 @@ def hi_filter_gaps():
 hi_filter_gaps()
 
 
+# %% Aggregate to route and stop-segment level first
+
+decomp_agg_route_seg = []
+
+# Loop over routes
+for analysis_route in analysis_routes:
+    print(analysis_route)
+    
+    # Loop over days or else hitting memory limits
+    for day in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']:
+        print(day)
+        
+        decomp_agg_route_seg_fil = (
+            decomp_all_hi[['route','start_date_time','index_run_start','filename','wday','trip_seg','basic_decomp','secs_marg']]
+            .query('route == @analysis_route & wday == @day')
+            # Add a column for year
+            .assign(year=lambda x: pd.DatetimeIndex(x.start_date_time).year,
+                    trip_instance=lambda x: x.index_run_start.to_string()+x.filename)
+        )
+        
+        # Count total trips per segment
+        decomp_agg_route_seg_trips = (
+            decomp_agg_route_seg_fil
+            .groupby(['route','year','wday','trip_seg'])
+            # Total trip instances for each segment
+            .agg(total_trips=('trip_instance', lambda x: x.nunique()))
+            .reset_index()
+        )
+        
+        # Aggregate total seconds and total trips
+        decomp_agg_route_seg_temp = (
+            decomp_agg_route_seg_fil
+            .groupby(['route','year','wday','trip_seg','basic_decomp'])
+            # Total seconds for each segment
+            .agg(total_secs=('secs_marg','sum'))
+            .reset_index()
+            # Join trip counts
+            .merge(decomp_agg_route_seg_trips, how='left', on=['route','year','wday','trip_seg'])
+            .assign(avg_secs_per_trip=lambda x: x.total_secs/x.total_trips)
+        )
+            
+        decomp_agg_route_seg.append(decomp_agg_route_seg_temp)
+        
+        del decomp_agg_route_seg_fil, decomp_agg_route_seg_trips, decomp_agg_route_seg_temp
+    
+    
+decomp_agg_route_seg = pd.concat(decomp_agg_route_seg, ignore_index=True)
+
+# %% Aggregate across routes for each segment
+
+decomp_agg_seg_trips = (
+    decomp_agg_route_seg
+    .groupby(['route','year','wday','trip_seg'])
+    # Get one value per year, wday, and trip_seg for each route
+    .agg(total_trips=('total_trips','max'))
+    # Aggregate across routes
+    .groupby(['year','wday','trip_seg'])
+    .agg(total_trips=('total_trips','sum'))
+    .reset_index()
+)
+
+decomp_agg_seg = (
+    decomp_agg_route_seg
+    .groupby(['year','wday','trip_seg','basic_decomp'])
+    # Total seconds for each segment
+    .agg(total_secs=('total_secs','sum'))
+    .reset_index()
+    # Join trip counts
+    .merge(decomp_agg_seg_trips, how='left', on=['year','wday','trip_seg'])
+    .assign(avg_secs_per_trip=lambda x: x.total_secs/x.total_trips)
+)
+
+
 # %% Aggregate for entire H/I bus lane segment
 
 decomp_agg_hi = (
-    decomp_all_hi[['start_date_time','index_run_start','filename','year','wday','trip_seg','basic_decomp','secs_marg']]
-    # Add a column for year
-    .assign(year=lambda x: pd.DatetimeIndex(x.start_date_time).year,
-            trip_instance=lambda x: x.index_run_start.to_string()+x.filename)
-    .groupby(['year','wday','trip_seg','basic_decomp'])
-    # Total seconds and total trip instances for each segment
-    .agg(total_secs=('secs_marg','sum'),
-         total_trips=('trip_instance', lambda x: x.nunique()))
+    decomp_agg_seg
+    .groupby(['year','wday','basic_decomp'])
+    # Total seconds for each segment
+    .agg(total_secs=('total_secs','sum'),
+         avg_secs_per_trip=('avg_secs_per_trip','sum'))
     .reset_index()
-    .assign(avg_secs_per_trip=lambda x: x.total_secs/x.total_trips)
 )
 
 
