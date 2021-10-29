@@ -296,11 +296,24 @@ speed_agg_seg = (
 
 # %% Aggregate for entire H/I bus lane segment
 
-h_street_segs = []
-i_street_segs = []
+h_street_segs = ['70','70_38247','70_42108','42108','42108_38247','38247','38247_644','644']
+i_street_segs = ['36932','36932_30838','36932_39086','36932_34150','34150','34150_30838',
+                 '34150_39086','30838','30838_26215','30838_39086','39086','39086_10',
+                 '39086_26215','30838_10','10','10_26215','26215']
 
-decomp_agg_hi = (
+decomp_agg_h = (
     decomp_agg_seg
+    .query('trip_seg in @h_street_segs')
+    .groupby(['year','wday','basic_decomp'])
+    # Total seconds for each segment
+    .agg(total_secs=('total_secs','sum'),
+         avg_secs_per_trip=('avg_secs_per_trip','sum'))
+    .reset_index()
+)
+    
+decomp_agg_h = (
+    decomp_agg_seg
+    .query('trip_seg in @i_street_segs')
     .groupby(['year','wday','basic_decomp'])
     # Total seconds for each segment
     .agg(total_secs=('total_secs','sum'),
@@ -308,8 +321,9 @@ decomp_agg_hi = (
     .reset_index()
 )
 
-speed_agg_hi = (
+speed_agg_h = (
     speed_agg_trip_seg
+    .query('trip_seg in @h_street_segs')
     # First aggregate for trip instances, across the entire segment
     .groupby(['route','year','wday','trip_instance'])
     .agg(total_secs=('total_secs','sum'),
@@ -328,11 +342,39 @@ speed_agg_hi = (
          speed_min=('speed_min','min'),
          # Stats on the average speed
          speed_p00=('speed_avg','min'),
-         speed_p05=lambda x: np.percentile(x.speed_avg, q=5),
-         speed_p50=lambda x: np.percentile(x.speed_avg, q=50),
-         speed_p95=lambda x: np.percentile(x.speed_avg, q=95),
+         speed_p05=('speed_avg', lambda x: np.percentile(x, q=5)),
+         speed_p50=('speed_avg', lambda x: np.percentile(x, q=50)),
+         speed_p95=('speed_avg', lambda x: np.percentile(x, q=95)),
          speed_p100=('speed_avg','max'))
     .reset_index()
     .assign(speed_avg=lambda x: x.total_feet/x.total_secs)
 )
 
+speed_agg_i = (
+    speed_agg_trip_seg
+    .query('trip_seg in @i_street_segs')
+    # First aggregate for trip instances, across the entire segment
+    .groupby(['route','year','wday','trip_instance'])
+    .agg(total_secs=('total_secs','sum'),
+         total_feet=('total_feet','sum'),
+         # Actual speed min/max
+         speed_max=('speed_max','max'),
+         speed_min=('speed_min','min'))
+    .reset_index()
+    .assign(speed_avg=lambda x: x.total_feet/x.total_secs)
+    # Then aggregate across all routes and trip instances
+    .groupby(['year','wday'])
+    .agg(total_secs=('total_secs','sum'),
+         total_feet=('total_feet','sum'),
+         # Actual speed min/max
+         speed_max=('speed_max','max'),
+         speed_min=('speed_min','min'),
+         # Stats on the average speed
+         speed_p00=('speed_avg','min'),
+         speed_p05=('speed_avg', lambda x: np.percentile(x, q=5)),
+         speed_p50=('speed_avg', lambda x: np.percentile(x, q=50)),
+         speed_p95=('speed_avg', lambda x: np.percentile(x, q=95)),
+         speed_p100=('speed_avg','max'))
+    .reset_index()
+    .assign(speed_avg=lambda x: x.total_feet/x.total_secs)
+)
