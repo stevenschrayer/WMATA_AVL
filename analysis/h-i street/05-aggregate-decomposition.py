@@ -311,7 +311,7 @@ decomp_agg_h = (
     .reset_index()
 )
     
-decomp_agg_h = (
+decomp_agg_i = (
     decomp_agg_seg
     .query('trip_seg in @i_street_segs')
     .groupby(['year','wday','basic_decomp'])
@@ -378,3 +378,28 @@ speed_agg_i = (
     .reset_index()
     .assign(speed_avg=lambda x: x.total_feet/x.total_secs)
 )
+    
+    
+# %% Export files
+
+# Route-stop seg level
+decomp_agg_route_seg.to_csv(os.path.join(path_processed_data, "agg_decomp_route_seg.csv"))
+speed_agg_route_seg.to_csv(os.path.join(path_processed_data, "agg_speed_route_seg.csv"))
+
+# Stop seg level
+decomp_agg_seg.to_csv(os.path.join(path_processed_data, "agg_decomp_seg.csv"))
+speed_agg_seg.to_csv(os.path.join(path_processed_data, "agg_speed_seg.csv"))
+
+# Entire seg level
+decomp_agg_h.to_csv(os.path.join(path_processed_data, "agg_decomp_H_street.csv"))
+decomp_agg_i.to_csv(os.path.join(path_processed_data, "agg_decomp_I_street.csv"))
+speed_agg_h.to_csv(os.path.join(path_processed_data, "agg_speed_H_street.csv"))
+speed_agg_i.to_csv(os.path.join(path_processed_data, "agg_speed_I_street.csv"))
+
+
+
+
+
+
+
+
