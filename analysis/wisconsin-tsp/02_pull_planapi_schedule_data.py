@@ -9,7 +9,7 @@ Created on Mon Jul 12 15:23:50 2021
 
 import cx_Oracle
 import os, sys, os.path
-import pandas as pd
+import pandas as pd, numpy as np
 from dotenv import load_dotenv
 
 # Working path
@@ -35,7 +35,7 @@ import wmatarawnav as wr
 
 # Globals
 tsp_route_list = ['30N','30S','33','31']
-analysis_routes = tsp_route_list
+analysis_routes = ['30N','30S','32','33','42','43']
 analysis_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
 
@@ -98,7 +98,7 @@ patterns_list = patterns_all['route_pattern']
 # %% Connect to database
 
 # Create dsn
-dsn_tns = cx_Oracle.makedsn('ctx4-scan', 
+dsn_tns = cx_Oracle.makedsn('jgx4-scan', 
                             '1521', 
                             service_name="NCSDPRD1.wmata.com")
 
@@ -116,23 +116,39 @@ from PLANAPI.BUS_SCHED_VERSION_V'''
 
 bus_sched_version = pd.read_sql_query(query, conn)
 
-# Get version IDs between February 1 and April 30, 2021
-bus_sched_version_wisconsin = (
+# Get version IDs between October 1 and October 31, 2017
+bus_sched_version_oct17 = (
     bus_sched_version
-    .loc[bus_sched_version['VERSION_END_DATE'] > pd.Timestamp("2021-02-01 00:00:00")]
-    .loc[bus_sched_version['VERSION_START_DATE'] < pd.Timestamp("2021-04-30 00:00:00")]
+    .loc[bus_sched_version['VERSION_END_DATE'] > pd.Timestamp("2017-10-01 00:00:00")]
+    .loc[bus_sched_version['VERSION_START_DATE'] < pd.Timestamp("2017-10-31 00:00:00")]
     )
+
+bus_sched_version_oct19 = (
+    bus_sched_version
+    .loc[bus_sched_version['VERSION_END_DATE'] > pd.Timestamp("2019-10-01 00:00:00")]
+    .loc[bus_sched_version['VERSION_START_DATE'] < pd.Timestamp("2019-10-31 00:00:00")]
+    )
+
+bus_sched_version_bind = pd.concat([bus_sched_version_oct17, bus_sched_version_oct19])
+
+version_list = bus_sched_version_bind['VERSIONID']
+
+# %% List all routes
+
+query = '''select ROUTE from PLANAPI.BUS_ROUTE_LINE_CORRIDOR'''
+
+all_routes = pd.read_sql_query(query, conn).drop_duplicates()['ROUTE'].to_list()
 
 
 # %% Pull PLANAPI data
 
 bus_sched_df = pd.DataFrame()
 
-for pattern_id in patterns_list:
+for route in all_routes:
     
     query = f'''with version_id_range as (
     select versionid from PLANAPI.BUS_SCHED_VERSION_V
-    where versionid IN ({bus_sched_version_wisconsin['VERSIONID'].astype(str).str.cat(sep = ", ")}))
+    where versionid IN ({bus_sched_version_bind['VERSIONID'].astype(str).str.cat(sep = ", ")}))
     select 
     seq.versionid, seq.route, seq.variation as pattern, seq.pattern_id, seq.directiondescription direction, seq.routename route_text
     , seq.routevarname pattern_name, seq.geostopid geoid, seq.stopid stop_id, seq.directionid direction_id, route.pattern_destination
@@ -140,7 +156,7 @@ for pattern_id in patterns_list:
     from PLANAPI.BUS_SCHED_STOP_SEQUENCE_V seq 
     join version_id_range rang on (rang.versionid = seq.versionid)
     left join planapi.bus_sched_route_v route on (seq.versionid = route.versionid and seq.routevarid = route.ROUTEVARID)
-    where seq.PATTERN_ID = '{pattern_id.strip()}' '''
+    where seq.ROUTE = '{route.strip()}' '''
 
     # Send query to database
     bus_sched_df_temp = pd.read_sql_query(query, conn)
@@ -153,14 +169,56 @@ del bus_sched_df_temp
 
 bus_sched_dates_df = pd.merge(
     bus_sched_df,
-    bus_sched_version_wisconsin,
+    bus_sched_version_bind,
     how = "left",
     on = ['VERSIONID']
     )
 
 # %% Export to CSV
 
-bus_sched_dates_df.to_csv(os.path.join(path_processed_data, "schedule_data_wisconsin_tsp.csv"), index=False)
+bus_sched_dates_df.to_csv(os.path.join(path_processed_data, "schedule_data_allroutes_oct17_oct19.csv"), index=False)
+
+
+# %% Pull lookup of route and line info from 2017 to present
+
+# ORBCAD_ROUTE_TEXT, LINE_NAMES, ROUTES_PER_LINE, LINE_SCHED_DAYS, ROUTE_SCHEDULE_DAYS, 
+# CORRIDOR_ID, CORRIDOR_DESCRIPTION, ROUTES_PER_CORRIDOR, STATUS, COMMENTS, EFFECTIVE_DATE
+
+query = '''select *
+from PLANAPI.BUS_NET_ROUTE_LINE_MATRIX'''
+
+# query = '''select *
+# from PLANAPI.BUS_SCHED_STOP_SEQUENCE_V
+# FETCH FIRST 10 ROWS ONLY'''
+
+bus_route_line = pd.read_sql_query(query, conn)
+
+
+bus_route_line_summary = (
+    bus_route_line
+    # .drop(['ORBCAD_ROUTE_TEXT','ROUTE_SCHEDULE_DAYS','COMMENTS',
+    #        'CORRIDOR_ID','CORRIDOR_DESCRIPTION','ROUTES_PER_CORRIDOR'],
+    #       axis = 'columns')
+    # .drop_duplicates()
+    .assign(date_dt = lambda x: pd.to_datetime(x.EFFECTIVE_DATE))
+    .groupby(['LINE_NAMES','ROUTES_PER_LINE'])['date_dt']
+    .agg(start_date = 'min',
+         end_date = 'max')
+    .reset_index()
+    .assign(start_date = lambda x: x.start_date.dt.strftime('%Y-%m-%d'),
+            end_date = lambda x:
+            np.where(
+                x.end_date == pd.to_datetime('2021-09-05'),
+                'Current',
+                x.end_date.dt.strftime('%Y-%m-%d')
+            ))
+)
+    
+    
+    
+# %% write to csv
+
+bus_route_line.to_csv(os.path.join(path_processed_data, "bus_route_line_history.csv"), index = False)
 
 
 # %% Close Connection
