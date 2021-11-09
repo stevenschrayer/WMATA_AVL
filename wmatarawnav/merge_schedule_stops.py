@@ -153,8 +153,8 @@ def merge_rawnav_wmata_schedule(analysis_route_,
         trip summary data with additional information from wmata schedule data
     nearest_rawnav_point_to_wmata_schedule_correct_stop_order_dat: gpd.GeoDataFrame
         cleaned data on nearest rawnav point to wmata schedule data where
-            - stops whose ordering does not correspond to the index_loc/ time/ odometer are removed i.e. stops are
-            removed if  order does not increase with index_loc or time or distance.
+            - stops whose ordering does not correspond to the line_number/ time/ odometer are removed i.e. stops are
+            removed if  order does not increase with line_number or time or distance.
             - where all stops with closest rawnav point > 100 ft. are removed.
     """
 
@@ -200,8 +200,8 @@ def merge_rawnav_wmata_schedule(analysis_route_,
     
     #do we need to set this index?
     # wmata_schedule_based_sum_dat.set_index(
-    #     ['fullpath', 'filename', 'file_id', 'wday', 'start_date_time', 'end_date_time',
-    #      'index_run_start', 'taglist', 'route_pattern', 'route', 'pattern'],
+    #     ['fullpath', '_file_id', 'file_id', 'wday', 'start_date_time', 'end_date_time',
+    #      '_tripInstance_id', 'taglist', 'route_pattern', 'route', 'pattern'],
     #     inplace=True,
     #     drop=True)
     
@@ -214,7 +214,7 @@ def add_num_missing_stops_to_sum(rawnav_wmata_schedule_dat,
 
     rawnav_wmata_schedule_num_stops = (
         rawnav_wmata_schedule_dat
-        .groupby(['filename', 'index_run_start'])
+        .groupby(['_file_id', '_tripInstance_id'])
         .agg(
             route=('route','first'),
             pattern=('pattern','first'),
@@ -245,8 +245,8 @@ def add_num_missing_stops_to_sum(rawnav_wmata_schedule_dat,
     
     wmata_schedule_based_sum_dat_with_missing_stop = (
         wmata_schedule_based_sum_dat_.merge(rawnav_wmata_schedule_num_stops,
-                                            on=['filename',
-                                                'index_run_start',
+                                            on=['_file_id',
+                                                '_tripInstance_id',
                                                 'route',
                                                 'pattern'],
                                             how='left')
@@ -279,7 +279,7 @@ def merge_rawnav_target(target_dat, rawnav_dat, quiet=True):
     # Iterate over groups of routes and patterns in rawnav data and target object
     target_groups = target_dat.groupby(['route', 'pattern'])
     rawnav_groups = rawnav_dat.groupby(
-        ['route', 'pattern', 'filename', 'index_run_start'])
+        ['route', 'pattern', '_file_id', '_tripInstance_id'])
 
     nearest_rawnav_point_to_target_dat = pd.DataFrame()
     
@@ -304,9 +304,9 @@ def merge_rawnav_target(target_dat, rawnav_dat, quiet=True):
     nearest_rawnav_point_to_target_dat = (
         ll.reorder_first_cols(
             nearest_rawnav_point_to_target_dat,
-            ['filename',
-             'index_run_start',
-             'index_loc'
+            ['_file_id',
+             '_tripInstance_id',
+             'line_number'
              ]
         )
     )
@@ -353,19 +353,19 @@ def assert_clean_stop_order_increase_with_odom(nearest_rawnav_point_to_wmata_sch
     -------
     nearest_rawnav_point_to_wmata_schedule_data_: gpd.GeoDataFrame
         cleaned data on nearest rawnav point to wmata schedule data where
-            - stops whose ordering does not correspond to the index_loc/ time/ odometer are removed 
-              i.e. stops are removed if  order does not increase with index_loc or time or distance.
+            - stops whose ordering does not correspond to the line_number/ time/ odometer are removed 
+              i.e. stops are removed if  order does not increase with line_number or time or distance.
             - where all stops with closest rawnav point > 100 ft. are removed.
     """
     #NOTE - BAM - I changed "stop_sort_order" to "stop_sequence" sorting below
     # this should be equivalent except stop_sequence starts at 1 instead of 0
     row_before = nearest_rawnav_point_to_wmata_schedule_data_.shape[0]
     nearest_rawnav_point_to_wmata_schedule_data_. \
-        sort_values(['filename', 'index_run_start', 'stop_sequence'], inplace=True)
+        sort_values(['_file_id', '_tripInstance_id', 'stop_sequence'], inplace=True)
     assert (nearest_rawnav_point_to_wmata_schedule_data_.duplicated(
-        ['filename', 'index_run_start', 'stop_sequence']).sum() == 0)
+        ['_file_id', '_tripInstance_id', 'stop_sequence']).sum() == 0)
     while (sum(nearest_rawnav_point_to_wmata_schedule_data_.
-                       groupby(['filename', 'index_run_start']).index_loc.diff().dropna() < 0) != 0):
+                       groupby(['_file_id', '_tripInstance_id']).line_number.diff().dropna() < 0) != 0):
         nearest_rawnav_point_to_wmata_schedule_data_ = \
             delete_rows_with_incorrect_stop_order(nearest_rawnav_point_to_wmata_schedule_data_)
     row_after = nearest_rawnav_point_to_wmata_schedule_data_.shape[0]
@@ -387,8 +387,8 @@ def delete_rows_with_incorrect_stop_order(nearest_rawnav_point_to_wmata_schedule
     """
 
     nearest_rawnav_point_to_wmata_schedule_data_.loc[:, 'diff_index'] = \
-        nearest_rawnav_point_to_wmata_schedule_data_.groupby(['filename', 'index_run_start']). \
-            index_loc.diff().fillna(0)
+        nearest_rawnav_point_to_wmata_schedule_data_.groupby(['_file_id', '_tripInstance_id']). \
+            line_number.diff().fillna(0)
                         
     wrong_snapping_dat = nearest_rawnav_point_to_wmata_schedule_data_.query('diff_index<0')
     nearest_rawnav_point_to_wmata_schedule_data_ = (
@@ -407,8 +407,8 @@ def include_wmata_schedule_based_summary(rawnav_q_dat, rawnav_sum_dat, nearest_s
     rawnav_sum_dat: pd.DataFrame, rawnav summary data
     nearest_stop_dat: gpd.GeoDataFrame
         cleaned data on nearest rawnav point to wmata schedule data where
-            - stops whose ordering does not correspond to the index_loc/ time/ odometer are removed i.e. stops are
-            removed if  order does not increase with index_loc or time or distance.
+            - stops whose ordering does not correspond to the line_number/ time/ odometer are removed i.e. stops are
+            removed if  order does not increase with line_number or time or distance.
             - where all stops with closest rawnav point > 100 ft. are removed.
     Returns
     -------
@@ -421,20 +421,20 @@ def include_wmata_schedule_based_summary(rawnav_q_dat, rawnav_sum_dat, nearest_s
         rawnav_q_dat
         .merge(first_last_stop_dat
                .drop(['odom_ft','sec_past_st'], axis = 1),
-               on=['filename', 'index_run_start'], 
+               on=['_file_id', '_tripInstance_id'], 
                how='right')
     )
     
     rawnav_q_stop_dat = (
         rawnav_q_stop_dat
-        .query('index_loc >= index_loc_first_stop & index_loc <= index_loc_last_stop')
+        .query('line_number >= line_number_first_stop & line_number <= line_number_last_stop')
     )
     
     #removed heading from the column list - it does not get aggregated
     rawnav_q_stop_dat = (
         rawnav_q_stop_dat[
-            ['filename', 
-             'index_run_start', 
+            ['_file_id', 
+             '_tripInstance_id', 
              'lat', 
              'long',
              'odom_ft', 
@@ -453,7 +453,7 @@ def include_wmata_schedule_based_summary(rawnav_q_dat, rawnav_sum_dat, nearest_s
     
     rawnav_q_stop_sum_dat = (
         rawnav_q_stop_dat
-        .groupby(['filename', 'index_run_start'])
+        .groupby(['_file_id', '_tripInstance_id'])
         .agg({'odom_ft': ['min', 'max', Map1],
               'sec_past_st': ['min', 'max', Map1],
               'lat': ['first', 'last'],
@@ -503,7 +503,7 @@ def include_wmata_schedule_based_summary(rawnav_q_dat, rawnav_sum_dat, nearest_s
                 x.run_dur_sec_wmata_schedule, 
                 2)
         )
-        .merge(rawnav_sum_dat, on=['filename', 'index_run_start'], how='left')
+        .merge(rawnav_sum_dat, on=['_file_id', '_tripInstance_id'], how='left')
     )
 
     return rawnav_q_stop_sum_dat
@@ -516,8 +516,8 @@ def get_first_last_stop_rawnav(nearest_rawnav_stop_dat):
     ----------
     nearest_rawnav_stop_dat: gpd.GeoDataFrame
         cleaned data on nearest rawnav point to wmata schedule data where
-            - stops whose ordering does not correspond to the index_loc/ time/ odometer are removed i.e. stops are
-            removed if  order does not increase with index_loc or time or distance.
+            - stops whose ordering does not correspond to the line_number/ time/ odometer are removed i.e. stops are
+            removed if  order does not increase with line_number or time or distance.
             - where all stops with closest rawnav point > 100 ft. are removed.
     Returns
     -------
@@ -528,17 +528,17 @@ def get_first_last_stop_rawnav(nearest_rawnav_stop_dat):
     
     last_stop_dat.loc[:, "tempCol"] = (
         last_stop_dat
-        .groupby(['filename', 'index_run_start'])
-        .index_loc
+        .groupby(['_file_id', '_tripInstance_id'])
+        .line_number
         .transform(max)
     )
         
     last_stop_dat = (
         last_stop_dat
-        .query('index_loc==tempCol')
+        .query('line_number==tempCol')
         .reset_index(drop=True)
-        .filter(items=['filename', 'index_run_start', 'index_loc', 'dist_to_nearest_point'])
-        .rename(columns={'index_loc': 'index_loc_last_stop',
+        .filter(items=['_file_id', '_tripInstance_id', 'line_number', 'dist_to_nearest_point'])
+        .rename(columns={'line_number': 'line_number_last_stop',
                          'dist_to_nearest_point': 'last_stop_dist_nearest_point'})
     )
 
@@ -546,29 +546,29 @@ def get_first_last_stop_rawnav(nearest_rawnav_stop_dat):
     
     first_stop_dat.loc[:, "tempCol"] = ( 
         first_stop_dat
-        .groupby(['filename', 'index_run_start'])
-        .index_loc
+        .groupby(['_file_id', '_tripInstance_id'])
+        .line_number
         .transform(min)
     )
     
     first_stop_dat = (
         first_stop_dat
-        .query('index_loc==tempCol')
+        .query('line_number==tempCol')
         .reset_index(drop=True)
         .drop(columns='tempCol')
         .rename(
-            columns={'index_loc': 'index_loc_first_stop',
+            columns={'line_number': 'line_number_first_stop',
                      'dist_to_nearest_point': 'first_stop_dist_nearest_point'
             }
         )
-        .sort_values(['filename', 'index_run_start'])
+        .sort_values(['_file_id', '_tripInstance_id'])
     )
     
     first_last_stop_dat = (
         first_stop_dat
         .merge(
             last_stop_dat, 
-            on=['filename', 'index_run_start'],
+            on=['_file_id', '_tripInstance_id'],
             how='left'
         )
         .drop(columns=['geometry', 'lat', 'long', 'pattern', 'route'])
@@ -645,8 +645,8 @@ def plot_rawnav_trajectory_with_wmata_schedule_stops(rawnav_dat, index_table_lin
         rawnav data
     index_table_line: gpd.GeoDataFrame
         cleaned data on nearest rawnav point to wmata schedule data where
-            - stops whose ordering does not correspond to the index_loc/ time/ odometer are removed i.e. stops are
-            removed if  order does not increase with index_loc or time or distance.
+            - stops whose ordering does not correspond to the line_number/ time/ odometer are removed i.e. stops are
+            removed if  order does not increase with line_number or time or distance.
             - where all stops with closest rawnav point > 100 ft. are removed.
             - line to nearest stop is geometry
     Returns
@@ -721,8 +721,8 @@ def plot_lines_clusters(this_map, dat, feature_grp):
         folium base map with feature groups.
     dat : gpd.GeoDataFrame
         cleaned data on nearest rawnav point to wmata schedule data where
-            - stops whose ordering does not correspond to the index_loc/ time/ odometer are removed 
-            i.e. stops are  removed if  order does not increase with index_loc or time or distance.
+            - stops whose ordering does not correspond to the line_number/ time/ odometer are removed 
+            i.e. stops are  removed if  order does not increase with line_number or time or distance.
             - where all stops with closest rawnav point > 100 ft. are removed.
     feature_grp : folium.plugin.FeatureGroup
         feature group used for stops with nearest rawnav point.
