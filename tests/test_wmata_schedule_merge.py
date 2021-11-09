@@ -278,7 +278,8 @@ def test_make_target_rawnav_linestring():
     mock_rawnav_data = gpd.GeoDataFrame(mock_rawnav_data)
     mock_rawnav_data.crs = 2248
     gpd_linestring = wr.make_target_rawnav_linestring(mock_rawnav_data)
-    assert pd.DataFrame(gpd_linestring.geom_type) == 'LineString', "Not all data is converted to LineString"
+    geometries =  pd.DataFrame(gpd_linestring.geom_type)
+    assert all(geometries.values == 'LineString'), "Not all data is converted to LineString"
     assert mock_rawnav_data.shape[0] == gpd_linestring.shape[0], "Data being removed when converted to LineString"
     assert gpd_linestring.geometry.isna().sum() == 0, "Data not being encoded as LineString, is NA"
 
