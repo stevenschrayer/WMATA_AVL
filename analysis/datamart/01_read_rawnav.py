@@ -88,7 +88,7 @@ ping_facts = (
 
 # need route, pattern, wday, end_date_time, row_before_apc, blank, 
 ping_facts['route'] = ping_facts['route_pattern'].str.slice(stop = -2)
-ping_facts['pattern'] = pd.to_numeric(ping_facts['route_pattern'].str.slice(start = -2))
+ping_facts['pattern'] = ping_facts['route_pattern'].str.slice(start = -2)
 ping_facts['wday'] = ping_facts['start_date'].dt.day_name()
 # TODO: See if Scott can parse the rest on his end
 

@@ -216,7 +216,7 @@ for analysis_route in routes_list:
                 target_dat=bus_sched_gdf,
                 rawnav_dat=rawnav_route_gdf)
         )
-    
+
         # Trialing resetting index as suggested by Benjamin Malnor
         # In general indices past the initial read-in don't matter much, so this seems like a safe
         # way of addressing the issue he hit
@@ -240,8 +240,7 @@ for analysis_route in routes_list:
         # Print if there is no data
         if type(stop_index_temp) == type(None):
             print('No data on analysis route {}'.format(analysis_route))
-        del stop_index_temp
-        
+                
         # Drop geometry and append to outputs for this route
         stop_index_temp = wr.drop_geometry(stop_index_temp)
         stop_index.append(stop_index_temp)
