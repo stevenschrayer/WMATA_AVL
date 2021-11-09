@@ -342,6 +342,34 @@ def remove_stops_with_dist_over_100ft(nearest_rawnav_point_to_wmata_schedule_dat
     return nearest_rawnav_point_to_wmata_schedule_data_
 
 
+def remove_stops_with_dist_over_threshold(nearest_rawnav_point_to_wmata_schedule_data_, threshold):
+    """
+    Parameters
+    ----------
+    nearest_rawnav_point_to_wmata_schedule_data_: gpd.GeoDataFrame
+        A geopandas dataframe with nearest rawnav point to each of the wmata schedule stops on that route.
+    Returns
+    -------
+    nearest_rawnav_point_to_wmata_schedule_data_: gpd.GeoDataFrame
+        cleaned data on nearest rawnav point to wmata schedule data where all stops with closest rawnav point > 100 ft.
+        are removed.
+    """
+    row_before = nearest_rawnav_point_to_wmata_schedule_data_.shape[0]
+
+    nearest_rawnav_point_to_wmata_schedule_data_ = (
+        nearest_rawnav_point_to_wmata_schedule_data_
+        .query(f'dist_to_nearest_point < {threshold}')
+    )
+
+    row_after = nearest_rawnav_point_to_wmata_schedule_data_.shape[0]
+
+    row_diff = row_before - row_after
+    print('deleted {} rows of {} rows with distance to the nearest stop > 100 ft. from index table'
+          .format(row_diff,row_before)
+    )
+    return nearest_rawnav_point_to_wmata_schedule_data_
+
+
 def assert_clean_stop_order_increase_with_odom(nearest_rawnav_point_to_wmata_schedule_data_):
     """
     Parameters

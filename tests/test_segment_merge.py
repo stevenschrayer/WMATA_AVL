@@ -117,7 +117,7 @@ def get_patterns():
              'seg_name_id':['irving_fifteenth_sixteenth_stub']}
         )
     )
-    return(patterns)
+    return patterns
 
 @pytest.fixture(scope="session")
 def get_segment_results(get_rawnav_gdf,get_summary,get_segments,get_patterns):
