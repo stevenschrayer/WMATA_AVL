@@ -278,14 +278,13 @@ def test_make_target_rawnav_linestring():
     mock_rawnav_data = gpd.GeoDataFrame(mock_rawnav_data)
     mock_rawnav_data.crs = 2248
     gpd_linestring = wr.make_target_rawnav_linestring(mock_rawnav_data)
-    geometries =  pd.DataFrame(gpd_linestring.geom_type)
-    assert all(geometries.values == 'LineString'), "Not all data is converted to LineString"
+    geometries =  gpd_linestring.geom_type
+    assert all(geometries.to_numpy() == 'LineString'), "Not all data is converted to LineString"
     assert mock_rawnav_data.shape[0] == gpd_linestring.shape[0], "Data being removed when converted to LineString"
     assert gpd_linestring.geometry.isna().sum() == 0, "Data not being encoded as LineString, is NA"
 
 
 def test_assert_clean_stop_order_increase_with_odom():
-    os.chdir(test_data_path)
     testcase = unittest.TestCase()
     nearest_pt = pd.read_csv(test_data_path / 'mock_stops_for_seq_test.csv')
     duplicated = nearest_pt.append(nearest_pt.iloc[0])
@@ -297,9 +296,7 @@ def test_assert_clean_stop_order_increase_with_odom():
     assert passes_duplicate_test == True, "assert_clean_stop_order_increase not flagging duplicates"
 
     rows_deleted = wr.assert_clean_stop_order_increase_with_odom(nearest_pt)
-    assert nearest_pt.shape[0] > rows_deleted.shape[0], "stop order sequence not being corrected"
-
-
+    assert nearest_pt.shape[0] > rows_deleted.shape[0], "stop order sequence not being corrected, out of seq stops remain"
 
 
 def test_drop_geometry():
@@ -312,5 +309,5 @@ def test_drop_geometry():
     dropped = wr.drop_geometry(gdf)
     return_type = type(dropped)
     assert isinstance(dropped, pd.DataFrame), f"drop_geometry() is returning a {return_type}, should be pd.DataFrame"
-    assert dropped.get('_geometry_column_name') is None, "geometry still in dataframe"
+    assert dropped.get('_geometry_column_name') is None, "geometry field still in dataframe"
 
