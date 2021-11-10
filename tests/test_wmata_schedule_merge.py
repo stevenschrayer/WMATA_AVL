@@ -262,6 +262,7 @@ def test_include_wmata_schedule_based_summary():
 
 def test_get_first_last_stop_rawnav():
     # is using index_loc.min() reliable? the sample trip I grabbed has a stop earlier but it also looks like the data may be weird?
+    # e.g., first stopin the sequence is a higher index_loc than the stop flagged as first, and also has odom_ft > 0
     mock_located_stops = pd.read_csv(test_data_path / 'mock_stops_for_first_last.csv')
     mock_first_stop = mock_located_stops['index_loc'].min() # first stop in CSV of a single trip
     mock_last_stop = mock_located_stops['index_loc'].max()  # last stop in CSV of a single trip

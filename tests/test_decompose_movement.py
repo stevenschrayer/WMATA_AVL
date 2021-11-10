@@ -165,10 +165,10 @@ def test_reset_odom(get_rawnav):
     print("####### ODOM RESET ########")
     print(odom_reset.head())
 
-    assert(odom_reset['odom_ft'] > 1)
-    assert(odom_reset['sec_past_st'] > 1)
+    assert all(odom_reset['odom_ft'].to_numpy() > 1), "some odom_ft not being updated"
+    assert all(odom_reset['sec_past_st'].to_numpy() > 1), "not all sec_past_st being updated"
     assert(test_rawnav is not odom_reset)
-    assert(test_rawnav.shape[0] > odom_reset.shape[0])
+    assert(test_rawnav.shape[0] > odom_reset.shape[0]), "reset odom records being left in"
 
 def test_match_stops():
     # TODO: ensure no stop is being matched twice per ping

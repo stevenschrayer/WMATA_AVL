@@ -157,3 +157,6 @@ analysis/bus-lane-analysis/2020-07-busstate_file_IDs.csv
 !analysis/exploratory/decomposition/image/*
 data/02-processed/
 locate.json
+
+
+.idea/
