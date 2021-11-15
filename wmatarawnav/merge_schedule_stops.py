@@ -612,8 +612,6 @@ def get_first_last_stop_rawnav(nearest_rawnav_stop_dat):
         .drop(columns=['geometry', 'lat', 'long', 'pattern', 'route'])
     )
 
-    dropped = first_last_stop_data.dropna()
-    assert first_last_stop_dat.shape[0] == dropped.shape[0],"first or last stop data not joining correctly"
     return first_last_stop_dat
 
 
