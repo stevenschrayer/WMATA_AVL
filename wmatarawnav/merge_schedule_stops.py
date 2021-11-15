@@ -159,8 +159,9 @@ def merge_rawnav_wmata_schedule(analysis_route_,
     """
 
     # Filter to relevant inputs
-    rawnav_subset_dat = rawnav_dat_.query('route==@analysis_route_ & wday==@analysis_day_')
-    rawnav_sum_subset_dat = rawnav_sum_dat_.query('route==@analysis_route_ & wday==@analysis_day_')
+    rawnav_query_str = 'route==@analysis_route_ & wday==@analysis_day_'
+    rawnav_subset_dat = rawnav_dat_.query(rawnav_query_str)
+    rawnav_sum_subset_dat = rawnav_sum_dat_.query(rawnav_query_str)
 
     if (rawnav_sum_subset_dat.shape[0] == 0): return None, None
 
@@ -222,7 +223,8 @@ def add_num_missing_stops_to_sum(rawnav_wmata_schedule_dat,
         )
         .reset_index()
     )
-            
+
+    # is this line necessary? vvvv
     rawnav_wmata_schedule_num_stops = pd.DataFrame(rawnav_wmata_schedule_num_stops)
         
     wmata_schedule_stops_all = (
@@ -339,6 +341,7 @@ def remove_stops_with_dist_over_100ft(nearest_rawnav_point_to_wmata_schedule_dat
     print('deleted {} rows of {} rows with distance to the nearest stop > 100 ft. from index table'
           .format(row_diff,row_before)
     )
+    assert row_after <= row_before, "rows are being added to dataframe"
     return nearest_rawnav_point_to_wmata_schedule_data_
 
 
@@ -401,6 +404,9 @@ def assert_clean_stop_order_increase_with_odom(nearest_rawnav_point_to_wmata_sch
     row_after = nearest_rawnav_point_to_wmata_schedule_data_.shape[0]
     row_diff = row_before - row_after
     print('deleted {} of {} stops with incorrect order from index table'.format(row_diff,row_before))
+
+    assert row_diff >= 0, "rows are being added instead of removed during increase_with_odom filter"
+
     return nearest_rawnav_point_to_wmata_schedule_data_
 
 
@@ -415,7 +421,7 @@ def delete_rows_with_incorrect_stop_order(nearest_rawnav_point_to_wmata_schedule
     nearest_rawnav_point_to_wmata_schedule_data_: gpd.GeoDataFrame
         input data with the offending row deleted.
     """
-
+    row_before = nearest_rawnav_point_to_wmata_schedule_data_.shape[0]
     nearest_rawnav_point_to_wmata_schedule_data_.loc[:, 'diff_index'] = \
         nearest_rawnav_point_to_wmata_schedule_data_.groupby(['filename', 'index_run_start']). \
             index_loc.diff().fillna(0)
@@ -426,6 +432,8 @@ def delete_rows_with_incorrect_stop_order(nearest_rawnav_point_to_wmata_schedule
         .query('diff_index>=0')
         .drop(columns = ['diff_index'])
     )
+    row_after =  nearest_rawnav_point_to_wmata_schedule_data_.shape[0]
+    assert row_before >= row_after, "rows being added during incorrect_stop_order filter"
     return nearest_rawnav_point_to_wmata_schedule_data_
 
 
@@ -433,7 +441,7 @@ def include_wmata_schedule_based_summary(rawnav_q_dat, rawnav_sum_dat, nearest_s
     """
     Parameters
     ----------
-    rawnav_q_dat: pd.DataFrame, rawnav data 
+    rawnav_q_dat: pd.DataFrame, rawnav data
     rawnav_sum_dat: pd.DataFrame, rawnav summary data
     nearest_stop_dat: gpd.GeoDataFrame
         cleaned data on nearest rawnav point to wmata schedule data where
@@ -603,7 +611,9 @@ def get_first_last_stop_rawnav(nearest_rawnav_stop_dat):
         )
         .drop(columns=['geometry', 'lat', 'long', 'pattern', 'route'])
     )
-        
+
+    dropped = first_last_stop_data.dropna()
+    assert first_last_stop_dat.shape[0] == dropped.shape[0],"first or last stop data not joining correctly"
     return first_last_stop_dat
 
 
@@ -645,7 +655,7 @@ def make_target_rawnav_linestring(index_table):
             index_table.lat
         )
     )
-
+    assert geometry_nearest_rawnav_point.shape[0] == index_table.shape[0],"not all rawnav points being located and/or are locatable"
 
     geometry_stop_on_route = (
         gpd.points_from_xy(
