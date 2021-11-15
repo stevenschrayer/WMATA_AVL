@@ -11,6 +11,8 @@ from shapely.geometry import Point
 from scipy.spatial import cKDTree
 import numpy as np
 
+import collections
+
 
 def tribble(columns, *data):
     """
@@ -42,9 +44,12 @@ def reorder_first_cols(df,first_cols_list):
     -------
     df: pd.DataFrame
     """
-    # TODO: make this not duplicate columns if you accidentally list twice
+    # TODO: make this not duplicate columns if you accidentally list twice - done below using collections
+    #  can't use list(set(my_list)) since it doesn't preserve order
     assert(isinstance(first_cols_list, list))
-    
+    first_cols_dict = collections.OrderedDict.fromkeys(first_cols_list)
+    first_cols_list = list(first_cols_dict)
+
     # attempting to make it work if you list a column that doesn't exist in data. could be bad.
     found_cols_list = [col for col in df.columns if col in first_cols_list]
     

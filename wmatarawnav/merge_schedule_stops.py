@@ -348,6 +348,8 @@ def remove_stops_with_dist_over_threshold(nearest_rawnav_point_to_wmata_schedule
     ----------
     nearest_rawnav_point_to_wmata_schedule_data_: gpd.GeoDataFrame
         A geopandas dataframe with nearest rawnav point to each of the wmata schedule stops on that route.
+    threshold: int
+        Integer in ft to remove stops with distance >= threshold
     Returns
     -------
     nearest_rawnav_point_to_wmata_schedule_data_: gpd.GeoDataFrame
@@ -428,7 +430,7 @@ def delete_rows_with_incorrect_stop_order(nearest_rawnav_point_to_wmata_schedule
 
 
 def include_wmata_schedule_based_summary(rawnav_q_dat, rawnav_sum_dat, nearest_stop_dat):
-    '''
+    """
     Parameters
     ----------
     rawnav_q_dat: pd.DataFrame, rawnav data 
@@ -442,7 +444,7 @@ def include_wmata_schedule_based_summary(rawnav_q_dat, rawnav_sum_dat, nearest_s
     -------
     rawnav_q_stop_sum_dat: pd.DataFrame
         trip summary data with additional information from wmata schedule data
-    '''
+    """
     first_last_stop_dat = get_first_last_stop_rawnav(nearest_stop_dat)
     
     rawnav_q_stop_dat = (
